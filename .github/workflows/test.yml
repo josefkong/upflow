@@ -148,19 +148,18 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
       ADMIN_EMAILS: admin@upflow.io
-      TEST_LOGIN_TOKEN: ${{ secrets.TEST_LOGIN_TOKEN }}
       PLAYWRIGHT_BASE_URL: http://localhost:3000
       PLAYWRIGHT_START_SERVER: "1"
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fail fast if TEST_LOGIN_TOKEN secret is not configured
+      - name: Generate temporary test login token
+        shell: bash
         run: |
-          if [ -z "${TEST_LOGIN_TOKEN}" ]; then
-            echo "::error::TEST_LOGIN_TOKEN repository secret is not set."
-            exit 1
-          fi
+          test_login_token="$(openssl rand -hex 32)"
+          echo "::add-mask::$test_login_token"
+          echo "TEST_LOGIN_TOKEN=$test_login_token" >> "$GITHUB_ENV"
 
       - uses: pnpm/action-setup@v4
         with:
@@ -232,7 +231,6 @@ jobs:
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
       SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key
       ADMIN_EMAILS: admin@upflow.io
-      TEST_LOGIN_TOKEN: ${{ secrets.TEST_LOGIN_TOKEN }}
       E2E_TEST_AUTH_BYPASS: "1"
       REDIS_URL: redis://localhost:6379
       RESEND_API_KEY: ci-resend-key
@@ -248,12 +246,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fail fast if TEST_LOGIN_TOKEN secret is not configured
+      - name: Generate temporary test login token
+        shell: bash
         run: |
-          if [ -z "${TEST_LOGIN_TOKEN}" ]; then
-            echo "::error::TEST_LOGIN_TOKEN repository secret is not set. Add it under Settings → Secrets and variables → Actions."
-            exit 1
-          fi
+          test_login_token="$(openssl rand -hex 32)"
+          echo "::add-mask::$test_login_token"
+          echo "TEST_LOGIN_TOKEN=$test_login_token" >> "$GITHUB_ENV"
 
       - uses: pnpm/action-setup@v4
         with:
@@ -328,7 +326,6 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
       ADMIN_EMAILS: admin@upflow.io
-      TEST_LOGIN_TOKEN: ${{ secrets.TEST_LOGIN_TOKEN }}
       PLAYWRIGHT_BASE_URL: http://localhost:3000
       PLAYWRIGHT_START_SERVER: "1"
 
@@ -348,13 +345,13 @@ jobs:
             echo "::warning::Theme screenshot baselines are not committed yet. Run the Generate theme visual baselines workflow, review its artifact, and commit the PNG files."
           fi
 
-      - name: Fail fast if TEST_LOGIN_TOKEN secret is not configured
+      - name: Generate temporary test login token
         if: steps.baselines.outputs.present == 'true'
+        shell: bash
         run: |
-          if [ -z "${TEST_LOGIN_TOKEN}" ]; then
-            echo "::error::TEST_LOGIN_TOKEN repository secret is not set."
-            exit 1
-          fi
+          test_login_token="$(openssl rand -hex 32)"
+          echo "::add-mask::$test_login_token"
+          echo "TEST_LOGIN_TOKEN=$test_login_token" >> "$GITHUB_ENV"
 
       - uses: pnpm/action-setup@v4
         if: steps.baselines.outputs.present == 'true'

@@ -33,19 +33,18 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
       ADMIN_EMAILS: admin@upflow.io
-      TEST_LOGIN_TOKEN: ${{ secrets.TEST_LOGIN_TOKEN }}
       PLAYWRIGHT_BASE_URL: http://localhost:3000
       PLAYWRIGHT_START_SERVER: "1"
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fail fast if TEST_LOGIN_TOKEN secret is not configured
+      - name: Generate temporary test login token
+        shell: bash
         run: |
-          if [ -z "${TEST_LOGIN_TOKEN}" ]; then
-            echo "::error::TEST_LOGIN_TOKEN repository secret is not set."
-            exit 1
-          fi
+          test_login_token="$(openssl rand -hex 32)"
+          echo "::add-mask::$test_login_token"
+          echo "TEST_LOGIN_TOKEN=$test_login_token" >> "$GITHUB_ENV"
 
       - uses: pnpm/action-setup@v4
         with:
