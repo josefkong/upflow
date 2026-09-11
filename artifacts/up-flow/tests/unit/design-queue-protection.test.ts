@@ -58,6 +58,7 @@ test("missing, hidden, or moved Design Queue lists are restored and cannot be de
   assert.match(projectRoute, /isProtectedDesignQueue/);
   assert.match(projectRoute, /cannot be renamed or moved/);
   assert.match(projectRoute, /cannot be deleted/);
-  assert.match(sidebarPanel, /sidebar:restore-design-queue/);
+  assert.match(departmentSpaces, /await ensureCreativeDesignQueue\(workspaceId, space\.id, ownerId\)/);
+  assert.doesNotMatch(sidebarPanel, /sidebar:restore-design-queue/);
   assert.match(projectRow, /protectedDesignQueue/);
 });

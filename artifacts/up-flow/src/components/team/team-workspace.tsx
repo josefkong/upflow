@@ -25,7 +25,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn, getInitials } from "@/lib/utils";
-import { colorDotClass } from "@/lib/department-colors";
+import {
+  colorDotClass,
+  departmentColorTone,
+  resolveUniqueDepartmentColors,
+} from "@/lib/department-colors";
 import type { Department, TeamMember } from "@/lib/types";
 import type { PendingInvite } from "@/components/team/team-page-types";
 import ServiceLeaderMappingPanel from "@/components/team/service-leader-mapping-panel";
@@ -90,33 +94,33 @@ const DEFAULT_CARD_COPY = {
     sort: "Sort: A–Z",
     sortByMembers: "Sort: members",
     sortByTasks: "Sort: tasks",
-    totalMembers: "Total members",
-    pendingInvites: "Pending invites",
-    activeTeams: "Active teams",
+    totalMembers: "Total Members",
+    pendingInvites: "Pending Invites",
+    activeTeams: "Active Teams",
     active: "active",
     awaitingAcceptance: "Awaiting acceptance",
     workload: "Team insights",
     workloadSubtitle: "Task distribution by team",
     load: "load",
-    viewReport: "View full report",
+    viewReport: "View Full Report",
     noWorkload: "No assigned work yet",
     resend: "Resend",
     cancel: "Cancel invite",
     recentActivity: "Recent activity",
-    viewAll: "View all",
+    viewAll: "View All",
     addedTo: "joined",
     team: "team",
     noActivity: "Team updates will appear here.",
-    viewMembers: "View members",
-    manageTeam: "Manage team",
-    moreActions: "More team actions",
+    viewMembers: "View Members",
+    manageTeam: "Manage Team",
+    moreActions: "More Team Actions",
     projects: "projects",
     tasks: "assigned tasks",
     leader: "Leader",
     noLeader: "No leader assigned",
-    editLeader: "Edit leader",
-    chooseLeader: "Choose a leader",
-    memberControls: "Member controls",
+    editLeader: "Edit Leader",
+    chooseLeader: "Choose a Leader",
+    memberControls: "Member Controls",
     memberControlsDescription: "Manage roles, account status, and department assignments.",
     noMembers: "No members in this team yet.",
     showingAll: "Showing all teams",
@@ -135,33 +139,33 @@ const DEFAULT_CARD_COPY = {
     sort: "Ordenar: A–Z",
     sortByMembers: "Ordenar: membros",
     sortByTasks: "Ordenar: tarefas",
-    totalMembers: "Total de membros",
-    pendingInvites: "Convites pendentes",
-    activeTeams: "Equipes ativas",
+    totalMembers: "Total de Membros",
+    pendingInvites: "Convites Pendentes",
+    activeTeams: "Equipes Ativas",
     active: "ativas",
     awaitingAcceptance: "Aguardando aceite",
     workload: "Insights das equipes",
     workloadSubtitle: "Distribuição de tarefas por equipe",
     load: "de carga",
-    viewReport: "Ver relatório completo",
+    viewReport: "Ver Relatório Completo",
     noWorkload: "Nenhuma tarefa atribuída ainda",
     resend: "Reenviar",
     cancel: "Cancelar convite",
     recentActivity: "Atividade recente",
-    viewAll: "Ver tudo",
+    viewAll: "Ver Tudo",
     addedTo: "entrou na equipe",
     team: "",
     noActivity: "As atualizações da equipe aparecerão aqui.",
-    viewMembers: "Ver pessoas",
-    manageTeam: "Gerenciar equipe",
-    moreActions: "Mais ações da equipe",
+    viewMembers: "Ver Pessoas",
+    manageTeam: "Gerenciar Equipe",
+    moreActions: "Mais Ações da Equipe",
     projects: "projetos",
     tasks: "tarefas atribuídas",
     leader: "Líder",
     noLeader: "Nenhum líder definido",
-    editLeader: "Editar líder",
-    chooseLeader: "Escolha um líder",
-    memberControls: "Controles de membros",
+    editLeader: "Editar Líder",
+    chooseLeader: "Escolha um Líder",
+    memberControls: "Controles de Membros",
     memberControlsDescription: "Gerencie papéis, status da conta e atribuições de departamento.",
     noMembers: "Nenhum membro nesta equipe ainda.",
     showingAll: "Exibindo todas as equipes",
@@ -388,6 +392,11 @@ export default function TeamWorkspace({
   const [contextMenuFor, setContextMenuFor] = useState<string | null>(null);
   const [leaderEditorFor, setLeaderEditorFor] = useState<string | null>(null);
 
+  const departmentColorById = useMemo(
+    () => resolveUniqueDepartmentColors(departments),
+    [departments],
+  );
+
   const groupMembers = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
     const lookup = new Map<string, TeamMember[]>();
@@ -414,7 +423,7 @@ export default function TeamWorkspace({
       key: department.id,
       id: department.id,
       name: department.name,
-      color: department.color,
+      color: departmentColorById.get(department.id) ?? department.color,
       members: groupMembers.get(department.id) ?? [],
       leader: department.leader ?? null,
       leaderCandidates: users.filter(
@@ -436,7 +445,7 @@ export default function TeamWorkspace({
       });
     }
     return cards;
-  }, [departments, groupMembers, t, users]);
+  }, [departmentColorById, departments, groupMembers, t, users]);
 
   const visibleCards = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -502,7 +511,7 @@ export default function TeamWorkspace({
               <p className="mt-0.5 text-sm text-slate-400">{copy.subtitle}</p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr))]">
               <MetricCard icon={UsersRound} label={copy.totalMembers} value={users.length} accent="violet" detail={t("team.memberCountPlural", { count: users.length })} />
               <MetricCard icon={Grid2X2} label={copy.departments} value={departments.length} accent="blue" detail={copy.active} />
               <MetricCard icon={Mail} label={copy.pendingInvites} value={pending.length} accent="purple" detail={copy.awaitingAcceptance} />
@@ -554,7 +563,7 @@ export default function TeamWorkspace({
               <div className="inline-flex h-9 shrink-0 overflow-hidden rounded-lg border border-blue-300/15 bg-[#091325] p-0.5">
                 <button
                   type="button"
-                  aria-label="Grid view"
+                  aria-label={t("team.gridView")}
                   aria-pressed={layoutMode === "grid"}
                   onClick={() => setLayoutMode("grid")}
                   className={cn(
@@ -566,7 +575,7 @@ export default function TeamWorkspace({
                 </button>
                 <button
                   type="button"
-                  aria-label="List view"
+                  aria-label={t("team.listView")}
                   aria-pressed={layoutMode === "list"}
                   onClick={() => setLayoutMode("list")}
                   className={cn(
@@ -722,15 +731,15 @@ function MetricCard({
   } as const;
   return (
     <div className="command-metric-card min-h-[94px] rounded-2xl border border-blue-300/10 bg-[#0b1424]/90 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_34px_rgba(0,0,0,0.16)]">
-      <div className="flex h-full items-center gap-3.5">
+      <div className="flex h-full items-center justify-start gap-3.5">
         <span className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border bg-gradient-to-br", accents[accent])}>
           <Icon className="h-6 w-6" />
         </span>
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-slate-400">{label}</p>
-          <div className="mt-0.5 flex items-end gap-2">
+        <div className="grid h-12 w-40 min-w-0 shrink content-center grid-rows-[1rem_1.75rem]">
+          <p className="line-clamp-1 flex h-4 min-w-0 items-center text-xs font-medium leading-4 text-slate-400">{label}</p>
+          <div className="flex h-7 min-w-0 items-end gap-2">
             <span className="text-[28px] font-semibold leading-none tracking-[-0.04em] text-white">{value}</span>
-            <span className="pb-0.5 text-[10px] text-slate-500">{detail}</span>
+            <span className="line-clamp-2 min-w-0 pb-0.5 text-[10px] leading-3 text-slate-500">{detail}</span>
           </div>
         </div>
       </div>
@@ -786,6 +795,7 @@ function TeamCard({
 }) {
   const style = teamStyleFor(card.name, index);
   const Icon = style.icon;
+  const tone = departmentColorTone(card.color);
   const [savingLeader, setSavingLeader] = useState(false);
   const leader = card.leader;
   const leaderOptions =
@@ -799,20 +809,48 @@ function TeamCard({
     <section
       data-testid="department-group"
       data-department-key={card.key}
+      data-department-color={card.color}
       className={cn(
-        "upflow-card upflow-card-hover relative overflow-visible rounded-2xl border border-blue-300/15 bg-[#0b1424]/95 p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_18px_38px_rgba(0,0,0,0.2)]",
+        "upflow-card upflow-card-hover relative overflow-visible rounded-2xl border bg-[#0b1424]/95 p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_18px_38px_rgba(0,0,0,0.2)]",
+        tone.cardBorder,
         layoutMode === "list" && "sm:grid sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:gap-5",
       )}
+      style={{
+        borderColor: `rgb(${tone.rgb} / 0.34)`,
+        borderLeftColor: `rgb(${tone.rgb} / 0.9)`,
+      }}
     >
       <div className={cn("flex items-start justify-between gap-3", layoutMode === "list" && "sm:contents")}>
-        <span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br", style.iconClass)}>
+        <span
+          className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border", tone.icon)}
+          style={{
+            borderColor: `rgb(${tone.rgb} / 0.55)`,
+            backgroundColor: `rgb(${tone.rgb} / 0.2)`,
+            color: `rgb(${tone.rgb})`,
+            boxShadow: `0 0 22px rgb(${tone.rgb} / 0.24)`,
+          }}
+        >
           <Icon className="h-5 w-5" />
         </span>
         <div className={cn("min-w-0 flex-1", layoutMode === "list" && "sm:order-2")}>
           <div className="flex min-w-0 items-start justify-between gap-2">
             <div className="min-w-0">
-              <h2 className="truncate text-[15px] font-semibold tracking-[-0.02em] text-white">{card.name}</h2>
-              <span className={cn("mt-1 inline-flex rounded-md border px-2 py-0.5 text-[10px] font-medium", style.badgeClass)}>
+              <h2 className="flex min-w-0 items-center gap-2 text-[15px] font-semibold tracking-[-0.02em] text-white">
+                <span
+                  aria-hidden="true"
+                  className={cn("h-2.5 w-2.5 shrink-0 rounded-full", tone.dot)}
+                  style={{ backgroundColor: `rgb(${tone.rgb})` }}
+                />
+                <span className="truncate">{card.name}</span>
+              </h2>
+              <span
+                className={cn("mt-1 inline-flex rounded-md border px-2 py-0.5 text-[10px] font-medium", tone.badge)}
+                style={{
+                  borderColor: `rgb(${tone.rgb} / 0.45)`,
+                  backgroundColor: `rgb(${tone.rgb} / 0.14)`,
+                  color: `rgb(${tone.rgb})`,
+                }}
+              >
                 {card.name}
               </span>
             </div>
@@ -978,10 +1016,18 @@ function DepartmentDetails({
       <div className="mt-4 divide-y divide-blue-300/10 rounded-xl border border-blue-300/10 bg-[#08111f]/70">
         {cards.map((card, index) => {
           const style = teamStyleFor(card.name, index);
+          const tone = departmentColorTone(card.color);
           const Icon = style.icon;
           return (
             <button key={card.key} type="button" onClick={() => onViewPeople(card)} className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition hover:bg-white/[0.04]">
-              <span className={cn("flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br", style.iconClass)}><Icon className="h-4 w-4" /></span>
+              <span
+                className={cn("flex h-9 w-9 items-center justify-center rounded-lg border", tone.icon)}
+                style={{
+                  borderColor: `rgb(${tone.rgb} / 0.55)`,
+                  backgroundColor: `rgb(${tone.rgb} / 0.2)`,
+                  color: `rgb(${tone.rgb})`,
+                }}
+              ><Icon className="h-4 w-4" /></span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold text-slate-100">{card.name}</span>
                 <span className="mt-0.5 block text-xs text-slate-500">{card.members.length} {copy.people.toLocaleLowerCase()}</span>
@@ -1053,7 +1099,10 @@ function MemberRoster({
                 className="flex w-full items-center gap-2.5 px-3.5 py-3 text-left transition hover:bg-white/[0.04]"
               >
                 {isCollapsed ? <ChevronRight className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
-                <span className={cn("h-2.5 w-2.5 rounded-full", colorDotClass(card.color))} />
+                <span
+                  className={cn("h-2.5 w-2.5 rounded-full", colorDotClass(card.color))}
+                  style={{ backgroundColor: `rgb(${departmentColorTone(card.color).rgb})` }}
+                />
                 <span className="text-sm font-semibold text-slate-100">{card.name}</span>
                 <span className="text-xs text-slate-500">{card.members.length} {copy.people.toLocaleLowerCase()}</span>
               </button>
@@ -1169,18 +1218,18 @@ function InsightsCard({ cards, totalTasks, copy }: { cards: TeamCardData[]; tota
       <div className="mt-4 space-y-3">
         {topCards.length === 0 ? (
           <p className="text-xs text-slate-500">{copy.noWorkload}</p>
-        ) : topCards.map((card, index) => {
+        ) : topCards.map((card) => {
           const amount = card.members.reduce((sum, member) => sum + member._count.tasks, 0);
           const percentage = totalTasks > 0 ? Math.max(4, Math.round((amount / totalTasks) * 100)) : 0;
-          const style = teamStyleFor(card.name, index);
+          const tone = departmentColorTone(card.color);
           return (
             <div key={card.key}>
               <div className="mb-1.5 flex items-center justify-between gap-2 text-[10px]">
-                <span className="flex min-w-0 items-center gap-1.5 text-slate-400"><span className={cn("h-2 w-2 shrink-0 rounded-full", style.barClass)} /> <span className="truncate">{card.name}</span></span>
+                <span className="flex min-w-0 items-center gap-1.5 text-slate-400"><span className={cn("h-2 w-2 shrink-0 rounded-full", tone.dot)} style={{ backgroundColor: `rgb(${tone.rgb})` }} /> <span className="truncate">{card.name}</span></span>
                 <span className="font-medium text-slate-300">{percentage}%</span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.07]">
-                <div className={cn("h-full rounded-full", style.barClass)} style={{ width: `${percentage}%` }} />
+                <div className={cn("h-full rounded-full", tone.bar)} style={{ width: `${percentage}%`, backgroundColor: `rgb(${tone.rgb})` }} />
               </div>
             </div>
           );

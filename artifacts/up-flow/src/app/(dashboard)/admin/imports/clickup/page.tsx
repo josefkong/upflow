@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useLanguage } from "@/components/language-provider";
 
 type Source = { id: string; name: string };
 type Folder = Source & { lists: Source[] };
@@ -52,6 +53,15 @@ type LoadingAction =
   | "cancel"
   | null;
 
+function localizedJobStatus(
+  status: string,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+) {
+  const key = `clickupImport.status.${status}`;
+  const translated = t(key);
+  return translated === key ? status : translated;
+}
+
 async function requestJson<T>(
   input: string,
   init?: RequestInit,
@@ -64,12 +74,8 @@ async function requestJson<T>(
   return payload;
 }
 
-function errorMessage(prefix: string, error: unknown): string {
-  const detail = error instanceof Error ? error.message : "";
-  return detail ? `${prefix} ${detail}` : prefix;
-}
-
 export default function ClickUpImportPage() {
+  const { t } = useLanguage();
   const [workspaces, setWorkspaces] = useState<Source[]>([]);
   const [source, setSource] = useState("");
   const [hierarchy, setHierarchy] = useState<Item[]>([]);
@@ -98,12 +104,12 @@ export default function ClickUpImportPage() {
         return true;
       } catch (cause) {
         if (!signal?.aborted && showError) {
-          setError(errorMessage("Could not restore the migration job.", cause));
+          setError(t("clickupImport.restoreError"));
         }
         return false;
       }
     },
-    [],
+    [t],
   );
 
   useEffect(() => {
@@ -121,11 +127,11 @@ export default function ClickUpImportPage() {
         const teams = Array.isArray(payload.teams) ? payload.teams : [];
         setWorkspaces(teams);
         if (!teams.length) {
-          setMessage("No ClickUp workspaces are available for this connection.");
+          setMessage(t("clickupImport.noWorkspaces"));
         }
       } catch (cause) {
         if (!controller.signal.aborted) {
-          setError(errorMessage("Could not load ClickUp workspaces.", cause));
+          setError(t("clickupImport.loadWorkspacesError"));
         }
       } finally {
         if (!controller.signal.aborted) setLoading(null);
@@ -133,7 +139,7 @@ export default function ClickUpImportPage() {
     })();
 
     return () => controller.abort();
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -172,11 +178,11 @@ export default function ClickUpImportPage() {
       setHierarchy(items);
       setMessage(
         items.length
-          ? "Select the lists to include in the migration preview."
-          : "No eligible ClickUp spaces were found for this workspace.",
+          ? t("clickupImport.selectListsHint")
+          : t("clickupImport.noEligibleSpaces"),
       );
     } catch (cause) {
-      setError(errorMessage("Could not load spaces and lists.", cause));
+      setError(t("clickupImport.loadHierarchyError"));
     } finally {
       setLoading(null);
     }
@@ -211,9 +217,9 @@ export default function ClickUpImportPage() {
         },
       );
       setPreview(payload);
-      setMessage("Preview is ready. Confirm the selected scope to queue the import.");
+      setMessage(t("clickupImport.previewReady"));
     } catch (cause) {
-      setError(errorMessage("Could not create the migration preview.", cause));
+      setError(t("clickupImport.previewError"));
     } finally {
       setLoading(null);
     }
@@ -239,17 +245,17 @@ export default function ClickUpImportPage() {
         },
       );
       setJob(created);
-      setMessage("Import queued. Use Resume to process the next bounded batch.");
+      setMessage(t("clickupImport.queued"));
     } catch (cause) {
       if (
         cause instanceof Error &&
         cause.message === "An import is already running for this workspace" &&
         (await restoreExistingJob(undefined, true))
       ) {
-        setMessage("The existing migration job has been restored below.");
+        setMessage(t("clickupImport.existingRestored"));
         return;
       }
-      setError(errorMessage("Could not queue the import.", cause));
+      setError(t("clickupImport.queueError"));
     } finally {
       setLoading(null);
     }
@@ -269,15 +275,15 @@ export default function ClickUpImportPage() {
       window.dispatchEvent(new Event("upflow:sidebar-refresh"));
       setMessage(
         job.report?.status_sync?.active && updated.status === "completed"
-          ? "Task statuses and board stages synchronized."
+          ? t("clickupImport.statusesSynchronized")
           : job.report?.status_sync?.active
-            ? "Task status and board-stage synchronization updated."
+            ? t("clickupImport.statusSyncUpdated")
             : updated.status === "completed"
-          ? "Migration complete. The sidebar has been refreshed."
-          : "Migration progress updated.",
+          ? t("clickupImport.completed")
+          : t("clickupImport.progressUpdated"),
       );
     } catch (cause) {
-      setError(errorMessage("Could not resume the import.", cause));
+      setError(t("clickupImport.resumeError"));
     } finally {
       setLoading(null);
     }
@@ -296,11 +302,11 @@ export default function ClickUpImportPage() {
       setJob(updated);
       setMessage(
         updated.status === "completed"
-          ? `${updated.report?.status_sync?.updated ?? 0} task statuses and board stages synchronized.`
-          : "Task status and board-stage synchronization started.",
+          ? t("clickupImport.statusCountSynchronized", { count: updated.report?.status_sync?.updated ?? 0 })
+          : t("clickupImport.statusSyncStarted"),
       );
     } catch (cause) {
-      setError(errorMessage("Could not synchronize task statuses and board stages.", cause));
+      setError(t("clickupImport.syncError"));
     } finally {
       setLoading(null);
     }
@@ -317,9 +323,9 @@ export default function ClickUpImportPage() {
         { method: "POST" },
       );
       setJob({ ...job, status: "cancelled" });
-      setMessage("Import cancelled.");
+      setMessage(t("clickupImport.cancelled"));
     } catch (cause) {
-      setError(errorMessage("Could not cancel the import.", cause));
+      setError(t("clickupImport.cancelError"));
     } finally {
       setLoading(null);
     }
@@ -342,23 +348,22 @@ export default function ClickUpImportPage() {
   return (
     <main className="mx-auto max-w-4xl space-y-6 p-6">
       <div>
-        <h1 className="text-2xl font-semibold">ClickUp migration</h1>
+        <h1 className="text-2xl font-semibold">{t("clickupImport.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          Import selected active work into this Upflow workspace. ClickUp
-          credentials stay on the server.
+          {t("clickupImport.description")}
         </p>
       </div>
 
       <section className="space-y-3 rounded-lg border p-4" aria-busy={loading === "hierarchy"}>
         <label className="block text-sm font-medium">
-          ClickUp workspace
+          {t("clickupImport.workspace")}
           <select
             className="mt-1 block w-full rounded border p-2"
             value={source}
             disabled={busy}
             onChange={(event) => selectWorkspace(event.target.value)}
           >
-            <option value="">Select workspace</option>
+            <option value="">{t("clickupImport.selectWorkspace")}</option>
             {workspaces.map((workspace) => (
               <option key={workspace.id} value={workspace.id}>
                 {workspace.name}
@@ -372,7 +377,7 @@ export default function ClickUpImportPage() {
           disabled={!source || busy}
           onClick={loadHierarchy}
         >
-          {loading === "hierarchy" ? "Loading spaces..." : "Load spaces and lists"}
+          {loading === "hierarchy" ? t("clickupImport.loadingSpaces") : t("clickupImport.loadSpaces")}
         </button>
       </section>
 
@@ -389,7 +394,7 @@ export default function ClickUpImportPage() {
 
       {hierarchy.length > 0 && (
         <section className="space-y-4 rounded-lg border p-4">
-          <h2 className="font-semibold">Select lists</h2>
+          <h2 className="font-semibold">{t("clickupImport.selectLists")}</h2>
           {hierarchy.map((item) => (
             <div key={item.space.id}>
               <h3 className="font-medium">{item.space.name}</h3>
@@ -449,7 +454,7 @@ export default function ClickUpImportPage() {
               disabled={!selectedCount || busy}
               onClick={runPreview}
             >
-              {loading === "preview" ? "Building preview..." : "Preview"}
+              {loading === "preview" ? t("clickupImport.buildingPreview") : t("clickupImport.preview")}
             </button>
             {preview && (
               <button
@@ -458,14 +463,17 @@ export default function ClickUpImportPage() {
                 disabled={busy || Boolean(job && !jobFinished)}
                 onClick={start}
               >
-                {loading === "start" ? "Queueing import..." : "Confirm and queue import"}
+                {loading === "start" ? t("clickupImport.queueing") : t("clickupImport.confirmQueue")}
               </button>
             )}
           </div>
           {preview && (
             <p className="text-sm">
-              Preview: {preview.lists} lists, {preview.tasks} active tasks,{" "}
-              {preview.assignee_emails.length} matched-by-email candidates.
+              {t("clickupImport.previewSummary", {
+                lists: preview.lists,
+                tasks: preview.tasks,
+                matches: preview.assignee_emails.length,
+              })}
             </p>
           )}
         </section>
@@ -473,14 +481,19 @@ export default function ClickUpImportPage() {
 
       {job && (
         <section className="space-y-3 rounded-lg border p-4">
-          <h2 className="font-semibold">Migration job</h2>
+          <h2 className="font-semibold">{t("clickupImport.job")}</h2>
           <p className="text-sm">
-            {job.status}: {job.imported} tasks imported, {job.failed} failed,{" "}
-            {job.cursor} of {jobListCount} selected lists processed.
+            {t("clickupImport.jobSummary", {
+              status: localizedJobStatus(job.status, t),
+              imported: job.imported,
+              failed: job.failed,
+              processed: job.cursor,
+              total: jobListCount,
+            })}
           </p>
           {job.status === "completed" && (
             <div className="space-y-2 text-sm">
-              <p className="font-medium">Imported spaces</p>
+              <p className="font-medium">{t("clickupImport.importedSpaces")}</p>
               {job.imported_spaces?.length ? (
                 <ul className="space-y-1">
                   {job.imported_spaces.map((space) => (
@@ -492,38 +505,38 @@ export default function ClickUpImportPage() {
                           window.dispatchEvent(new Event("upflow:sidebar-refresh"))
                         }
                       >
-                        Open {space.name}
+                        {t("clickupImport.openSpace", { name: space.name })}
                       </Link>{" "}
                       <span className="text-muted-foreground">
-                        ({space.selected_lists} selected lists)
+                        ({t("clickupImport.selectedListsCount", { count: space.selected_lists })})
                       </span>
                     </li>
                   ))}
                 </ul>
               ) : (
                 <p className="text-muted-foreground">
-                  The selected space is now available from the sidebar.
+                  {t("clickupImport.spaceAvailable")}
                 </p>
               )}
             </div>
           )}
           {job.report?.status_sync && !job.report.status_sync.active && (
             <p className="text-sm text-muted-foreground">
-              Task status sync: {job.report.status_sync.updated ?? 0} tasks and board stages synchronized.
+              {t("clickupImport.statusSyncSummary", { count: job.report.status_sync.updated ?? 0 })}
             </p>
           )}
           {job.failed > 0 && (
             <p role="alert" className="text-sm text-destructive">
               {job.report?.failures?.[0]?.list_name
                 ? `${job.report.failures[0].list_name}: ${job.report.failures[0].error}`
-                : "Some selected lists failed. Retry them after correcting the reported issue."}
+                : t("clickupImport.someListsFailed")}
             </p>
           )}
           {job.report?.status_sync?.failed ? (
             <p role="alert" className="text-sm text-destructive">
               {job.report.status_sync.failures?.[0]?.list_name
                 ? `${job.report.status_sync.failures[0].list_name}: ${job.report.status_sync.failures[0].error}`
-                : "Some task statuses could not be synchronized. Try again after correcting the reported issue."}
+                : t("clickupImport.someStatusesFailed")}
             </p>
           ) : null}
           <div className="flex gap-2">
@@ -534,12 +547,12 @@ export default function ClickUpImportPage() {
               onClick={resume}
             >
               {loading === "resume"
-                ? "Resuming..."
+                ? t("clickupImport.resuming")
                 : statusSyncActive
-                  ? "Continue status sync"
+                  ? t("clickupImport.continueStatusSync")
                   : retryingFailedLists
-                  ? "Retry failed lists"
-                  : "Resume next batch"}
+                  ? t("clickupImport.retryFailedLists")
+                  : t("clickupImport.resumeNextBatch")}
             </button>
             {job.status === "completed" && (
               <button
@@ -548,7 +561,7 @@ export default function ClickUpImportPage() {
                 disabled={busy}
                 onClick={syncStatuses}
               >
-                {loading === "sync" ? "Syncing statuses..." : "Sync task statuses"}
+                {loading === "sync" ? t("clickupImport.syncingStatuses") : t("clickupImport.syncStatuses")}
               </button>
             )}
             <button
@@ -557,7 +570,7 @@ export default function ClickUpImportPage() {
               disabled={!jobCancellable || busy}
               onClick={cancel}
             >
-              {loading === "cancel" ? "Cancelling..." : "Cancel"}
+              {loading === "cancel" ? t("clickupImport.cancelling") : t("common.cancel")}
             </button>
           </div>
         </section>

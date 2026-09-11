@@ -21,7 +21,7 @@ export function TaskRecord({
   updating: boolean;
   onStatusChange: (task: Task, status: TaskStatus) => void;
 }) {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const statusLabels: Record<TaskStatus, string> = {
     todo: t("spaceDashboard.statusTodo"),
     in_progress: t("spaceDashboard.statusInProgress"),
@@ -37,10 +37,14 @@ export function TaskRecord({
           </p>
           <p className="mt-1 truncate text-xs text-muted-foreground">
             {task.project?.name || t("spaceDashboard.project")} -{" "}
-            {task.due_date ? formatDate(task.due_date) : t("spaceDashboard.noDueDate")}
+            {task.due_date
+              ? formatDate(task.due_date, language)
+              : t("spaceDashboard.noDueDate")}
           </p>
         </Link>
-        <span className={cn("text-xs font-medium", priorityColor(task.priority))}>
+        <span
+          className={cn("text-xs font-medium", priorityColor(task.priority))}
+        >
           {task.priority}
         </span>
       </div>
@@ -48,13 +52,14 @@ export function TaskRecord({
         {(["todo", "in_progress", "done"] as TaskStatus[]).map((status) => (
           <button
             key={status}
-            disabled={updating || task.status === status}
+            disabled
             onClick={() => onStatusChange(task, status)}
+            title={t("task.automaticMovementOnly")}
             className={cn(
-              "rounded-md border border-white/10 px-2.5 py-1 text-xs transition-colors",
+              "cursor-not-allowed rounded-md border border-white/10 px-2.5 py-1 text-xs opacity-70 transition-colors",
               task.status === status
                 ? "bg-primary/20 text-primary"
-                : "text-muted-foreground hover:bg-white/10 hover:text-foreground",
+                : "text-muted-foreground",
             )}
           >
             {statusLabels[status]}
@@ -76,7 +81,9 @@ export function HeroMetric({
 }) {
   return (
     <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-      <p className="text-xs font-semibold uppercase text-muted-foreground">{label}</p>
+      <p className="text-xs font-semibold uppercase text-muted-foreground">
+        {label}
+      </p>
       <p className="mt-2 text-2xl font-bold text-foreground">{value}</p>
       <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
     </div>
@@ -140,7 +147,12 @@ export function CommandTile({
     >
       <span className={cn("absolute inset-x-0 top-0 h-0.5", color.bar)} />
       <div className="flex items-start justify-between gap-3">
-        <span className={cn("flex h-9 w-9 items-center justify-center rounded-lg", color.icon)}>
+        <span
+          className={cn(
+            "flex h-9 w-9 items-center justify-center rounded-lg",
+            color.icon,
+          )}
+        >
           {icon}
         </span>
         <ArrowRight className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-foreground" />
@@ -177,8 +189,15 @@ export function StatusCard({
       )}
     >
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold uppercase text-muted-foreground">{label}</p>
-        <span className={cn("flex h-9 w-9 items-center justify-center rounded-lg", color.icon)}>
+        <p className="text-xs font-semibold uppercase text-muted-foreground">
+          {label}
+        </p>
+        <span
+          className={cn(
+            "flex h-9 w-9 items-center justify-center rounded-lg",
+            color.icon,
+          )}
+        >
           {icon}
         </span>
       </div>
@@ -237,7 +256,10 @@ export function SectionHeader({
   return (
     <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
       <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-      <button onClick={onAction} className="text-xs text-primary hover:underline">
+      <button
+        onClick={onAction}
+        className="text-xs text-primary hover:underline"
+      >
         {actionLabel}
       </button>
     </div>
@@ -253,11 +275,17 @@ export function RecordList({
   emptyTitle: string;
   emptyText: string;
 }) {
-  const childArray = Array.isArray(children) ? children.filter(Boolean) : children ? [children] : [];
+  const childArray = Array.isArray(children)
+    ? children.filter(Boolean)
+    : children
+      ? [children]
+      : [];
   if (childArray.length === 0) {
     return <DrawerEmpty title={emptyTitle} text={emptyText} />;
   }
-  return <div className="space-y-3 divide-y divide-transparent p-4">{children}</div>;
+  return (
+    <div className="space-y-3 divide-y divide-transparent p-4">{children}</div>
+  );
 }
 
 export function DrawerEmpty({ title, text }: { title: string; text: string }) {
@@ -294,7 +322,13 @@ export function QuickCreateButton({
   );
 }
 
-export function Metric({ label, value }: { label: string; value: string | number }) {
+export function Metric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
   return (
     <div className="rounded-lg bg-white/[0.03] p-2">
       <p className="text-[10px] uppercase text-muted-foreground">{label}</p>

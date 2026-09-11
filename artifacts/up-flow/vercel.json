@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/automations",
-      "schedule": "0 13 * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }

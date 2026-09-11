@@ -8,6 +8,7 @@ import {
   createGoogleCalendarPkceChallenge,
   decryptGoogleCalendarSecret,
   encryptGoogleCalendarSecret,
+  getGoogleCalendarBrowserOrigin,
   getGoogleCalendarConfig,
   getGoogleCalendarAuthorizationUrl,
   getGoogleCalendarLoginRecoveryUrl,
@@ -58,9 +59,13 @@ test("Google Calendar provider secrets are encrypted with authenticated encrypti
   const encrypted = encryptGoogleCalendarSecret(secret, TEST_ENCRYPTION_KEY);
 
   assert.notEqual(encrypted, secret);
-  assert.equal(decryptGoogleCalendarSecret(encrypted, TEST_ENCRYPTION_KEY), secret);
+  assert.equal(
+    decryptGoogleCalendarSecret(encrypted, TEST_ENCRYPTION_KEY),
+    secret,
+  );
+  const tampered = `${encrypted.slice(0, -1)}${encrypted.endsWith("A") ? "B" : "A"}`;
   assert.throws(
-    () => decryptGoogleCalendarSecret(`${encrypted.slice(0, -1)}A`, TEST_ENCRYPTION_KEY),
+    () => decryptGoogleCalendarSecret(tampered, TEST_ENCRYPTION_KEY),
     /could not be decrypted/,
   );
   assert.throws(
@@ -76,7 +81,8 @@ test("Google OAuth authorization URL uses PKCE, offline access, and only require
       config: {
         clientId: "client-id.apps.googleusercontent.com",
         clientSecret: "server-only-client-secret",
-        redirectUri: "https://staging.example.com/api/integrations/google-calendar/callback",
+        redirectUri:
+          "https://staging.example.com/api/integrations/google-calendar/callback",
         tokenEncryptionKey: TEST_ENCRYPTION_KEY,
       },
       state: "state-value-that-is-long-enough-to-be-safe",
@@ -111,16 +117,33 @@ test("Google OAuth configuration rejects an interceptable callback URL but allow
   };
 
   withGoogleCalendarEnv(
-    { ...credentials, GOOGLE_CALENDAR_REDIRECT_URI: "http://staging.example.com/callback" },
+    {
+      ...credentials,
+      GOOGLE_CALENDAR_REDIRECT_URI: "http://staging.example.com/callback",
+    },
     () => assert.equal(getGoogleCalendarConfig(), null),
   );
   withGoogleCalendarEnv(
-    { ...credentials, GOOGLE_CALENDAR_REDIRECT_URI: "https://staging.example.com/callback" },
-    () => assert.equal(getGoogleCalendarConfig()?.redirectUri, "https://staging.example.com/callback"),
+    {
+      ...credentials,
+      GOOGLE_CALENDAR_REDIRECT_URI: "https://staging.example.com/callback",
+    },
+    () =>
+      assert.equal(
+        getGoogleCalendarConfig()?.redirectUri,
+        "https://staging.example.com/callback",
+      ),
   );
   withGoogleCalendarEnv(
-    { ...credentials, GOOGLE_CALENDAR_REDIRECT_URI: "http://127.0.0.1:3000/callback" },
-    () => assert.equal(getGoogleCalendarConfig()?.redirectUri, "http://127.0.0.1:3000/callback"),
+    {
+      ...credentials,
+      GOOGLE_CALENDAR_REDIRECT_URI: "http://127.0.0.1:3000/callback",
+    },
+    () =>
+      assert.equal(
+        getGoogleCalendarConfig()?.redirectUri,
+        "http://127.0.0.1:3000/callback",
+      ),
   );
 });
 
@@ -128,7 +151,8 @@ test("Google OAuth requires its configured callback origin and produces canonica
   const config = {
     clientId: "client-id.apps.googleusercontent.com",
     clientSecret: "server-only-client-secret",
-    redirectUri: "https://www.grupoup-flow.com.br/api/integrations/google-calendar/callback",
+    redirectUri:
+      "https://www.grupoup-flow.com.br/api/integrations/google-calendar/callback",
     tokenEncryptionKey: TEST_ENCRYPTION_KEY,
   };
 
@@ -150,9 +174,15 @@ test("Google OAuth requires its configured callback origin and produces canonica
   const result = getGoogleCalendarResultUrl(config, "official_origin_required");
   assert.equal(result.origin, "https://www.grupoup-flow.com.br");
   assert.equal(result.pathname, "/calendar");
-  assert.equal(result.searchParams.get("google_calendar"), "official_origin_required");
+  assert.equal(
+    result.searchParams.get("google_calendar"),
+    "official_origin_required",
+  );
 
-  const recovery = getGoogleCalendarLoginRecoveryUrl(config, "session_required");
+  const recovery = getGoogleCalendarLoginRecoveryUrl(
+    config,
+    "session_required",
+  );
   assert.equal(recovery.origin, "https://www.grupoup-flow.com.br");
   assert.equal(recovery.pathname, "/login");
   assert.equal(
@@ -161,34 +191,73 @@ test("Google OAuth requires its configured callback origin and produces canonica
   );
 });
 
+test("Google OAuth uses the browser host instead of the local Next.js bind address", () => {
+  const browserOrigin = getGoogleCalendarBrowserOrigin(
+    "http://0.0.0.0:3000/api/integrations/google-calendar/connect",
+    new Headers({ host: "localhost:3000" }),
+  );
+  const config = {
+    clientId: "client-id.apps.googleusercontent.com",
+    clientSecret: "server-only-client-secret",
+    redirectUri: "http://localhost:3000/api/integrations/google-calendar/callback",
+    tokenEncryptionKey: TEST_ENCRYPTION_KEY,
+  };
+
+  assert.equal(browserOrigin, "http://localhost:3000");
+  assert.equal(isGoogleCalendarCallbackOrigin(browserOrigin, config), true);
+});
+
 test("completed Google OAuth never reuses a prior refresh token and requires a verified subject", () => {
   const source = read("src/lib/google-calendar.ts");
 
   assert.match(source, /const googleSubject = profile\?\.subject/);
   assert.match(source, /if \(!tokens\.refreshToken \|\| !googleSubject\)/);
-  assert.match(source, /const refreshTokenCiphertext = encryptGoogleCalendarSecret\(\s*tokens\.refreshToken/);
+  assert.match(
+    source,
+    /const refreshTokenCiphertext = encryptGoogleCalendarSecret\(\s*tokens\.refreshToken/,
+  );
   assert.match(source, /refresh_token_ciphertext:\s*refreshTokenCiphertext/);
   assert.doesNotMatch(source, /existing\?\.refresh_token_ciphertext/);
 });
 
 test("Google OAuth callback uses the signed state workspace and fences account replacement", () => {
-  const callback = read("src/app/api/integrations/google-calendar/callback/route.ts");
-  const connect = read("src/app/api/integrations/google-calendar/connect/route.ts");
+  const callback = read(
+    "src/app/api/integrations/google-calendar/callback/route.ts",
+  );
+  const connect = read(
+    "src/app/api/integrations/google-calendar/connect/route.ts",
+  );
   const source = read("src/lib/google-calendar.ts");
 
   // A person may switch their selected workspace while they are at Google's
   // consent page. The one-time state already binds the intended workspace;
   // only the signed-in user needs to match on callback.
   assert.doesNotMatch(callback, /requireCurrentWorkspace/);
-  assert.match(callback, /completeGoogleCalendarConnect\(\{\s*state,\s*code,\s*userId:/);
-  assert.match(callback, /getGoogleCalendarLoginRecoveryUrl\(config, "session_required"\)/);
+  assert.match(
+    callback,
+    /completeGoogleCalendarConnect\(\{\s*state,\s*code,\s*userId:/,
+  );
+  assert.match(
+    callback,
+    /getGoogleCalendarLoginRecoveryUrl\(config, "session_required"\)/,
+  );
   assert.match(callback, /Cache-Control", "private, no-store"/);
   assert.match(connect, /getGoogleCalendarConfig/);
-  assert.match(connect, /isGoogleCalendarCallbackOrigin\(req\.url, config\)/);
-  assert.match(connect, /getGoogleCalendarLoginRecoveryUrl\(config, "official_origin_required"\)/);
+  assert.match(connect, /getGoogleCalendarBrowserOrigin\(req\.url, req\.headers\)/);
+  assert.match(connect, /isGoogleCalendarCallbackOrigin\(browserOrigin, config\)/);
+  assert.match(
+    connect,
+    /getGoogleCalendarLoginRecoveryUrl\(config, "official_origin_required"\)/,
+  );
   assert.match(source, /oauthState\.workspace_id/);
-  assert.match(source, /lockGoogleCalendarConnectionForSync\(tx, existing\.id\)/);
-  assert.match(source, /revokeGoogleCalendarToken\(saved\.replacedConnection, config\)/);
+  assert.match(
+    source,
+    /lockGoogleCalendarConnectionForSync\(tx, existing\.id\)/,
+  );
+  assert.match(
+    source,
+    /revokeGoogleCalendarToken\(saved\.replacedConnection, config\)/,
+  );
 });
 
 test("Google OAuth host and session recovery notices are localized", () => {
@@ -197,13 +266,25 @@ test("Google OAuth host and session recovery notices are localized", () => {
 
   assert.match(calendar, /googleCalendar\.officialOriginRequired/);
   assert.match(calendar, /googleCalendar\.sessionRequired/);
-  assert.match(translations, /"googleCalendar\.officialOriginRequired": "You are now on the official UpFlow address/);
-  assert.match(translations, /"googleCalendar\.sessionRequired": "Your Google authorization could not be completed/);
-  assert.match(translations, /"googleCalendar\.officialOriginRequired": "Agora você está no endereço oficial do UpFlow/);
-  assert.match(translations, /"googleCalendar\.sessionRequired": "Não foi possível concluir a autorização do Google/);
+  assert.match(
+    translations,
+    /"googleCalendar\.officialOriginRequired":\s*"You are now on the official UpFlow address/,
+  );
+  assert.match(
+    translations,
+    /"googleCalendar\.sessionRequired":\s*"Your Google authorization could not be completed/,
+  );
+  assert.match(
+    translations,
+    /"googleCalendar\.officialOriginRequired":\s*"Agora você está no endereço oficial do UpFlow/,
+  );
+  assert.match(
+    translations,
+    /"googleCalendar\.sessionRequired":\s*"Não foi possível concluir a autorização do Google/,
+  );
 });
 
-test("Google Calendar event sync requires an active workspace membership for the event creator", () => {
+test("Google Calendar event sync uses the responsible member as organizer", () => {
   const source = read("src/lib/google-calendar.ts");
 
   assert.match(source, /async function hasActiveWorkspaceMembership/);
@@ -213,11 +294,16 @@ test("Google Calendar event sync requires an active workspace membership for the
   assert.match(source, /status:\s*"active"/);
   assert.match(
     source,
-    /hasActiveWorkspaceMembership\(event\.workspace_id, event\.created_by(?:,\s*(?:db|tx))?\)/,
+    /const organizerUserId = googleCalendarOrganizerUserId\(event\)/,
+  );
+  assert.match(source, /event\.responsible_user_id \|\| event\.created_by/);
+  assert.match(
+    source,
+    /hasActiveWorkspaceMembership\(event\.workspace_id, organizerUserId, db\)/,
   );
 });
 
-test("Google event payload maps calendar details without inviting internal attendees", () => {
+test("Google event payload maps calendar details and invites internal and client attendees", () => {
   const startsAt = new Date("2026-08-04T14:00:00.000Z");
   const payload = buildGoogleCalendarEventPayload({
     id: "event-1",
@@ -231,6 +317,15 @@ test("Google event payload maps calendar details without inviting internal atten
     status: "scheduled",
     location: "Meeting Room A",
     meeting_url: "https://meet.example.com/launch",
+    attendees: [
+      { user: { email: "support@example.com" } },
+      { user: { email: "owner@example.com" } },
+    ],
+    company: {
+      main_contact_email: "client@example.com",
+      billing_email: null,
+      contacts: [],
+    },
     reminders: [
       { minutes_before: 15, enabled: true },
       { minutes_before: 15, enabled: true },
@@ -241,7 +336,10 @@ test("Google event payload maps calendar details without inviting internal atten
   });
 
   assert.equal(payload.summary, "Client planning meeting");
-  assert.equal(payload.description, "Review launch milestones\n\nhttps://meet.example.com/launch");
+  assert.equal(
+    payload.description,
+    "Review launch milestones\n\nhttps://meet.example.com/launch",
+  );
   assert.equal(payload.location, "Meeting Room A");
   assert.equal(payload.start.dateTime, startsAt.toISOString());
   assert.equal(payload.start.timeZone, "America/Sao_Paulo");
@@ -255,7 +353,38 @@ test("Google event payload maps calendar details without inviting internal atten
     upflow_workspace_id: "workspace-1",
     upflow_source: "calendar",
   });
-  assert.equal("attendees" in payload, false);
+  assert.deepEqual(payload.attendees, [
+    { email: "support@example.com" },
+    { email: "owner@example.com" },
+    { email: "client@example.com" },
+  ]);
+});
+
+test("Google event payload requests a Meet conference for an online schedule", () => {
+  const payload = buildGoogleCalendarEventPayload({
+    id: "online-event-1",
+    workspace_id: "workspace-1",
+    created_by: "user-1",
+    title: "Online planning meeting",
+    description: null,
+    starts_at: new Date("2026-09-04T13:00:00.000Z"),
+    ends_at: new Date("2026-09-04T14:30:00.000Z"),
+    timezone: "America/Sao_Paulo",
+    status: "scheduled",
+    location: null,
+    meeting_url: null,
+    google_meet_requested: true,
+    reminders: [],
+  });
+
+  assert.equal(payload.start.dateTime, "2026-09-04T13:00:00.000Z");
+  assert.equal(payload.end.dateTime, "2026-09-04T14:30:00.000Z");
+  assert.deepEqual(payload.conferenceData, {
+    createRequest: {
+      requestId: "upflow-online-event-1",
+      conferenceSolutionKey: { type: "hangoutsMeet" },
+    },
+  });
 });
 
 test("shared Google agenda entries preserve availability without exposing private details", () => {
@@ -414,10 +543,15 @@ test("Google Calendar routes are server-only, authenticated, and workspace scope
     assert.match(source, /requireAuth/);
     assert.match(source, /requireCurrentWorkspace/);
     assert.match(source, /withErrorReporting/);
-    assert.doesNotMatch(source, /access_token_ciphertext|refresh_token_ciphertext/);
+    assert.doesNotMatch(
+      source,
+      /access_token_ciphertext|refresh_token_ciphertext/,
+    );
   }
 
-  const callback = read("src/app/api/integrations/google-calendar/callback/route.ts");
+  const callback = read(
+    "src/app/api/integrations/google-calendar/callback/route.ts",
+  );
   assert.match(callback, /runtime\s*=\s*"nodejs"/);
   assert.match(callback, /requireAuth/);
   assert.match(callback, /completeGoogleCalendarConnect/);
@@ -425,25 +559,38 @@ test("Google Calendar routes are server-only, authenticated, and workspace scope
   // OAuth state is the authority for the originating workspace so changing
   // the dashboard workspace during consent does not reject a safe callback.
   assert.doesNotMatch(callback, /requireCurrentWorkspace/);
-  assert.doesNotMatch(callback, /access_token_ciphertext|refresh_token_ciphertext/);
+  assert.doesNotMatch(
+    callback,
+    /access_token_ciphertext|refresh_token_ciphertext/,
+  );
 });
 
 test("shared Google agenda is workspace-scoped, sanitized, and visible in the unified calendar", () => {
   const schema = read("prisma/schema.prisma");
-  const migration = read("prisma/migrations/20260804090000_add_google_calendar_shared_agenda/migration.sql");
+  const migration = read(
+    "prisma/migrations/20260804090000_add_google_calendar_shared_agenda/migration.sql",
+  );
   const route = read("src/app/api/calendar/shared-agenda/route.ts");
   const calendar = read("src/app/(dashboard)/calendar/page.tsx");
-  const card = read("src/components/calendar/google-calendar-integration-card.tsx");
+  const card = read(
+    "src/components/calendar/google-calendar-integration-card.tsx",
+  );
 
   assert.match(schema, /model GoogleCalendarAgendaEntry/);
   assert.match(schema, /share_agenda\s+Boolean\s+@default\(true\)/);
   assert.match(schema, /is_private\s+Boolean\s+@default\(false\)/);
   assert.match(migration, /ENABLE ROW LEVEL SECURITY/);
-  assert.match(migration, /REVOKE ALL ON TABLE "GoogleCalendarAgendaEntry" FROM anon, authenticated/);
+  assert.match(
+    migration,
+    /REVOKE ALL ON TABLE "GoogleCalendarAgendaEntry" FROM anon, authenticated/,
+  );
   assert.match(route, /workspace_id:\s*scope\.workspaceId/);
   assert.match(route, /connection:\s*\{\s*share_agenda:\s*true/);
   assert.match(route, /select:\s*\{[\s\S]*?is_private:\s*true/);
-  assert.doesNotMatch(route, /description|attendees|meeting_url|access_token_ciphertext|refresh_token_ciphertext/);
+  assert.doesNotMatch(
+    route,
+    /description|attendees|meeting_url|access_token_ciphertext|refresh_token_ciphertext/,
+  );
   assert.match(calendar, /data-testid="unified-calendar"/);
   assert.match(calendar, /data-testid="calendar-source-settings"/);
   assert.match(calendar, /selectedScheduleItems/);
@@ -454,7 +601,9 @@ test("shared Google agenda is workspace-scoped, sanitized, and visible in the un
 });
 
 test("Google Calendar recovery UI offers reconnect and disconnect after calendar loading fails", () => {
-  const card = read("src/components/calendar/google-calendar-integration-card.tsx");
+  const card = read(
+    "src/components/calendar/google-calendar-integration-card.tsx",
+  );
   const errorBranch = card.slice(
     card.indexOf(") : loadError ? ("),
     card.indexOf(") : status?.ready === false ? ("),
@@ -466,7 +615,9 @@ test("Google Calendar recovery UI offers reconnect and disconnect after calendar
 });
 
 test("Google Calendar settings are available from the unified calendar source control and show Connect when OAuth is ready", () => {
-  const card = read("src/components/calendar/google-calendar-integration-card.tsx");
+  const card = read(
+    "src/components/calendar/google-calendar-integration-card.tsx",
+  );
   const page = read("src/app/(dashboard)/calendar/page.tsx");
   const unavailableBranch = card.slice(
     card.indexOf(") : status?.ready === false ? ("),
@@ -500,7 +651,10 @@ test("ordinary local calendar writes atomically persist upsert jobs and process 
 
   for (const route of [create, item, duplicate]) {
     assert.match(route, /prisma\.\$transaction\(async \(tx\) => \{/);
-    assert.match(route, /queueGoogleCalendarEventSyncInTransaction\(tx, (?:event|updated|duplicate)\.id\)/);
+    assert.match(
+      route,
+      /queueGoogleCalendarEventSyncInTransaction\(\s*tx,\s*(?:event|updated|duplicate)\.id,?\s*\)/,
+    );
     assert.match(route, /after\(\(\) =>\s*processGoogleCalendarSyncJob\(/);
     assert.doesNotMatch(route, /syncGoogleCalendarEvent\(/);
   }
@@ -541,12 +695,16 @@ test("cancellation and deletion persist provider deletion tombstones before loca
     deletionStart,
     normalizedSource.indexOf("\n}\n\n/**", deletionStart),
   );
-  const tombstoneQueue = "queueGoogleCalendarEventDeletionInTransaction(tx, eventId)";
+  const tombstoneQueue =
+    "queueGoogleCalendarEventDeletionInTransaction(tx, eventId)";
   const upsertRemoval = "await tx.googleCalendarSyncJob.deleteMany({";
-  const localDelete = "await tx.calendarEvent.delete({ where: { id: eventId } })";
+  const localDelete =
+    "await tx.calendarEvent.delete({ where: { id: eventId } })";
   assert.ok(
-    deletionFunction.indexOf(tombstoneQueue) < deletionFunction.indexOf(upsertRemoval)
-      && deletionFunction.indexOf(upsertRemoval) < deletionFunction.indexOf(localDelete),
+    deletionFunction.indexOf(tombstoneQueue) <
+      deletionFunction.indexOf(upsertRemoval) &&
+      deletionFunction.indexOf(upsertRemoval) <
+        deletionFunction.indexOf(localDelete),
     "event deletion must retain delete tombstones, then remove every upsert before the FK can null event_id",
   );
   assert.doesNotMatch(
@@ -557,18 +715,28 @@ test("cancellation and deletion persist provider deletion tombstones before loca
 
   assert.match(item, /deleteCalendarEventWithGoogleTombstones\(existing\.id\)/);
   assert.doesNotMatch(item, /await prisma\.calendarEvent\.delete\(/);
-  assert.match(item, /for \(const googleCalendarJobId of googleCalendarDeletionJobIds\)[\s\S]*?processGoogleCalendarSyncJob\(googleCalendarJobId\)/);
+  assert.match(
+    item,
+    /for \(const googleCalendarJobId of googleCalendarDeletionJobIds\)[\s\S]*?processGoogleCalendarSyncJob\(googleCalendarJobId\)/,
+  );
 
-  const queueCall = "queueGoogleCalendarEventDeletionInTransaction(tx, event.id)";
+  const queueCall =
+    "queueGoogleCalendarEventDeletionInTransaction(tx, event.id)";
   const localMutation = "await tx.calendarEvent.update";
   assert.match(cancel, /prisma\.\$transaction\(async \(tx\) => \{/);
-  assert.match(cancel, /queueGoogleCalendarEventDeletionInTransaction\(tx, event\.id\)/);
+  assert.match(
+    cancel,
+    /queueGoogleCalendarEventDeletionInTransaction\(tx, event\.id\)/,
+  );
   assert.ok(
     cancel.indexOf(queueCall) < cancel.indexOf(localMutation),
     "a cancellation tombstone must be committed before the local event is marked cancelled",
   );
   assert.match(cancel, /googleCalendarDeletionJobIds = result\.jobIds/);
-  assert.match(cancel, /for \(const googleCalendarJobId of googleCalendarDeletionJobIds\)[\s\S]*?processGoogleCalendarSyncJob\(googleCalendarJobId\)/);
+  assert.match(
+    cancel,
+    /for \(const googleCalendarJobId of googleCalendarDeletionJobIds\)[\s\S]*?processGoogleCalendarSyncJob\(googleCalendarJobId\)/,
+  );
 });
 
 test("the worker fences leased jobs and defers inactive-member deletion tombstones", () => {
@@ -604,7 +772,10 @@ test("manual sync persists its explicit force intent while automatic sync is pau
     2,
     "both create and update paths must retain force intent",
   );
-  assert.match(source, /syncGoogleCalendarEvent\(job\.event_id, \{ force: job\.force, db: tx \}\)/);
+  assert.match(
+    source,
+    /syncGoogleCalendarEvent\(job\.event_id, \{[\s\S]*?force: job\.force,[\s\S]*?db: tx,[\s\S]*?connectionId: job\.connection_id/,
+  );
   assert.match(
     source,
     /const jobId = await queueGoogleCalendarEventSync\(event\.id, \{ force: true \}\);[\s\S]*?return jobId \? processGoogleCalendarSyncJob\(jobId\) : \("skipped" as const\)/,
@@ -614,7 +785,10 @@ test("manual sync persists its explicit force intent while automatic sync is pau
 test("the existing daily maintenance route processes a bounded Google Calendar retry batch", () => {
   const cron = read("src/app/api/cron/due-soon/route.ts");
 
-  assert.match(cron, /import \{ after, NextRequest, NextResponse \} from "next\/server"/);
+  assert.match(
+    cron,
+    /import \{ after, NextRequest, NextResponse \} from "next\/server"/,
+  );
   assert.match(cron, /processPendingGoogleCalendarSyncJobs/);
   assert.match(cron, /processPendingGoogleCalendarSyncJobs\(\{ limit: 10 \}\)/);
   assert.match(

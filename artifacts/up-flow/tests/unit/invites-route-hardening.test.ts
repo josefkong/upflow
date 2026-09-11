@@ -190,7 +190,8 @@ test("workspace and space screens expose role-based sharing", () => {
   assert.match(sidebarPanel, /workspaceId=\{shareTarget\.workspace_id \|\| currentWorkspaceId\}/);
   assert.match(sidebarPanel, /defaultMode="workspace_access"/);
   assert.match(spacePage, /t\("space\.shareSpace"\)/);
-  assert.match(spacePage, /t\("space\.accessDescription"/);
+  assert.match(spacePage, /t\("space\.shareSpaceDescription"/);
+  assert.match(spacePage, /SpaceShareRequestDialog/);
   assert.match(spacePage, /workspaceId=\{space\.workspace_id\}/);
   assert.match(spacePage, /defaultMode="workspace_access"/);
 });
@@ -311,7 +312,8 @@ test("tester reset is super-admin only and limited to sandbox tester accounts", 
 test("tester invite acceptance explains the isolated workspace", () => {
   assert.match(acceptPage, /t\("invite\.testerBadge"\)/);
   assert.match(acceptPage, /t\("invite\.testerExplanation"\)/);
-  assert.match(acceptPage, /login\?next=/);
+  assert.match(acceptPage, /\/api\/auth\/google\?next=/);
+  assert.doesNotMatch(acceptPage, /type="password"/);
 });
 
 test("manual tester accounts use Supabase auth and the isolated test workspace", () => {

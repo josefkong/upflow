@@ -14,6 +14,12 @@ import {
   countPendingTodoTasks,
 } from "@/lib/sidebar-pending-tasks";
 import { withErrorReporting } from "@/lib/with-error-reporting";
+import { isFinanceContractMirrorProject } from "@/lib/commercial-contract-mirror";
+import { commercialFlowProjectKind } from "@/lib/commercial-managed-projects";
+import {
+  SHARED_ONBOARDING_TASK_AUTOMATION_KEY,
+  isOnboardingMirrorProject,
+} from "@/lib/onboarding-shared-flow";
 
 export const dynamic = "force-dynamic";
 
@@ -66,7 +72,10 @@ async function GET_handler(req: NextRequest) {
           ],
         }
       : {};
-  const readableProjectsWhere = readableProjectWhere(auth, auth.currentWorkspaceId);
+  const readableProjectsWhere = readableProjectWhere(
+    auth,
+    auth.currentWorkspaceId,
+  );
   // Shared department queues must remain visible even if a legacy visibility
   // migration left an incorrect flag behind. Client-specific work still
   // follows the onboarding visibility rules below.
@@ -79,16 +88,54 @@ async function GET_handler(req: NextRequest) {
           { company_id: null },
           { kind: "onboarding" },
           {
-            AND: [
-              { onboarding_enabled: true },
-              { company_id: { not: null } },
-            ],
+            AND: [{ onboarding_enabled: true }, { company_id: { not: null } }],
           },
         ],
       },
       personalSpaceVisibilityWhere,
     ],
   };
+  const contractHandoffStatusCounts = await prisma.task.groupBy({
+    by: ["status"],
+    where: {
+      project: { workspace_id: auth.currentWorkspaceId },
+      commercial_contract_handoff: { isNot: null },
+    },
+    _count: { _all: true },
+  });
+  const mirroredContractTaskCount = contractHandoffStatusCounts.reduce(
+    (total, item) => total + item._count._all,
+    0,
+  );
+  const mirroredContractPendingCount =
+    contractHandoffStatusCounts.find((item) => item.status === "todo")?._count
+      ._all ?? 0;
+  const sharedOnboardingStatusCounts = await prisma.task.groupBy({
+    by: ["status"],
+    where: {
+      project: { workspace_id: auth.currentWorkspaceId },
+      onboarding_items: {
+        some: { automation_key: SHARED_ONBOARDING_TASK_AUTOMATION_KEY },
+      },
+    },
+    _count: { _all: true },
+  });
+  const sharedOnboardingTaskCount = sharedOnboardingStatusCounts.reduce(
+    (total, item) => total + item._count._all,
+    0,
+  );
+  const sharedOnboardingPendingCount = sharedOnboardingStatusCounts.reduce(
+    (total, item) =>
+      item.status === "done" ? total : total + item._count._all,
+    0,
+  );
+  const isContractFlowProject = (
+    projectName: string,
+    spaceName?: string | null,
+  ) =>
+    isFinanceContractMirrorProject({ projectName, spaceName }) ||
+    commercialFlowProjectKind({ projectName, spaceName }) ===
+      "contract_handoff";
   // Select the navigation fields explicitly so a release can still read
   // existing spaces while a newly introduced optional UI column is rolling out.
   const spaceSelect = {
@@ -104,6 +151,10 @@ async function GET_handler(req: NextRequest) {
     projects: {
       where: visibleProjectWhere,
       select: {
+        id: true,
+        name: true,
+        company_id: true,
+        onboarding_enabled: true,
         _count: {
           select: {
             tasks: { where: { status: "todo" as const } },
@@ -120,8 +171,6 @@ async function GET_handler(req: NextRequest) {
       select: {
         id: true,
         name: true,
-        contract_value: true,
-        commission: true,
         plan_name: true,
         service_type: true,
       },
@@ -132,20 +181,78 @@ async function GET_handler(req: NextRequest) {
     _count: { select: { projects: { where: visibleProjectWhere } } },
   };
   const withPendingTodoCount = <
-    T extends { projects: Array<{ _count: { tasks: number } }> },
+    T extends {
+      name: string;
+      projects: Array<{
+        id: string;
+        name: string;
+        company_id: string | null;
+        onboarding_enabled: boolean;
+        _count: { tasks: number };
+      }>;
+    },
   >(
     space: T,
   ) => {
     const { projects: spaceProjects, ...spaceData } = space;
+    const contractFlowProjects = spaceProjects.filter((project) =>
+      isContractFlowProject(project.name, space.name),
+    );
+    const onboardingProjects = spaceProjects.filter((project) =>
+      isOnboardingMirrorProject({
+        projectName: project.name,
+        onboardingEnabled: project.onboarding_enabled,
+        companyId: project.company_id,
+      }),
+    );
+    const regularProjects = spaceProjects.filter(
+      (project) =>
+        !isContractFlowProject(project.name, space.name) &&
+        !isOnboardingMirrorProject({
+          projectName: project.name,
+          onboardingEnabled: project.onboarding_enabled,
+          companyId: project.company_id,
+        }),
+    );
+    const hasContractFlow = contractFlowProjects.length > 0;
+    const hasOnboardingFlow = onboardingProjects.length > 0;
     return {
       ...spaceData,
-      pending_todo_count: countPendingTodoTasks(spaceProjects),
+      pending_todo_count:
+        countPendingTodoTasks(regularProjects) +
+        (hasContractFlow ? mirroredContractPendingCount : 0) +
+        (hasOnboardingFlow ? sharedOnboardingPendingCount : 0),
+      ...(hasContractFlow || hasOnboardingFlow
+        ? {
+            flow_task_count:
+              countPendingTodoTasks(regularProjects) +
+              (hasContractFlow ? mirroredContractTaskCount : 0) +
+              (hasOnboardingFlow ? sharedOnboardingTaskCount : 0),
+          }
+        : {}),
     };
   };
 
-  const withProjectPendingTodoCounts = async <T extends { id: string }>(
+  const withProjectPendingTodoCounts = async <
+    T extends {
+      id: string;
+      name: string;
+      company_id: string | null;
+      onboarding_enabled: boolean;
+      space: { name: string } | null;
+      _count: { tasks: number };
+    },
+  >(
     projectRows: T[],
-  ): Promise<Array<T & { pending_todo_count: number }>> => {
+  ): Promise<
+    Array<
+      T & {
+        pending_todo_count: number;
+        flow_task_count?: number;
+        _count: { tasks: number };
+      }
+    >
+  > => {
     if (projectRows.length === 0) return [];
 
     const taskCounts = await prisma.task.groupBy({
@@ -157,75 +264,110 @@ async function GET_handler(req: NextRequest) {
       _count: { _all: true },
     });
 
-    return addProjectPendingTodoCounts(projectRows, taskCounts);
+    return addProjectPendingTodoCounts(projectRows, taskCounts).map(
+      (project) =>
+        isOnboardingMirrorProject({
+          projectName: project.name,
+          onboardingEnabled: project.onboarding_enabled,
+          companyId: project.company_id,
+        })
+          ? {
+              ...project,
+              _count: {
+                ...project._count,
+                tasks: sharedOnboardingTaskCount,
+              },
+              pending_todo_count: sharedOnboardingPendingCount,
+              flow_task_count: sharedOnboardingTaskCount,
+            }
+          : isContractFlowProject(project.name, project.space?.name)
+            ? {
+                ...project,
+                _count: {
+                  ...project._count,
+                  tasks: mirroredContractTaskCount,
+                },
+                pending_todo_count: mirroredContractPendingCount,
+                flow_task_count: mirroredContractTaskCount,
+              }
+            : project,
+    );
   };
 
   if (q) {
-    const [matchingSpaces, matchingProjects, matchingFolders, pinnedClients] = await Promise.all([
-      prisma.space.findMany({
-        where: {
-          workspace_id: auth.currentWorkspaceId,
-          ...(hiddenSpaceIds.length > 0
-            ? { id: { notIn: hiddenSpaceIds } }
-            : {}),
-          name: { contains: q, mode: "insensitive" as const },
-        },
-        take: limit,
-        orderBy: [{ position: "asc" }, { created_at: "asc" }, { id: "asc" }],
-        select: spaceSelect,
-      }),
-      prisma.project.findMany({
-        where: {
-          AND: [
-            visibleProjectWhere,
-            {
-              OR: [
-                { name: { contains: q, mode: "insensitive" as const } },
-                { company: { is: { name: { contains: q, mode: "insensitive" as const } } } },
-              ],
-            },
-          ],
-        },
-        take: limit,
-        orderBy: [{ created_at: "desc" }, { id: "asc" }],
-        include: projectInclude,
-      }),
-      prisma.folder.findMany({
-        where: {
-          workspace_id: auth.currentWorkspaceId,
-          ...(hiddenSpaceIds.length > 0
-            ? { space_id: { notIn: hiddenSpaceIds } }
-            : {}),
-          name: { contains: q, mode: "insensitive" as const },
-        },
-        take: limit,
-        orderBy: [{ position: "asc" }, { created_at: "asc" }, { id: "asc" }],
-        include: folderInclude,
-      }),
-      prisma.sidebarClientPin.findMany({
-        where: {
-          workspace_id: auth.currentWorkspaceId,
-          user_id: auth.prismaUser.id,
-        },
-        orderBy: [{ position: "asc" }, { created_at: "asc" }, { id: "asc" }],
-        select: {
-          id: true,
-          company_id: true,
-          position: true,
-          company: {
-            select: {
-              id: true,
-              name: true,
-              status: true,
-              commercial_status: true,
-              plan_name: true,
+    const [matchingSpaces, matchingProjects, matchingFolders, pinnedClients] =
+      await Promise.all([
+        prisma.space.findMany({
+          where: {
+            workspace_id: auth.currentWorkspaceId,
+            ...(hiddenSpaceIds.length > 0
+              ? { id: { notIn: hiddenSpaceIds } }
+              : {}),
+            name: { contains: q, mode: "insensitive" as const },
+          },
+          take: limit,
+          orderBy: [{ position: "asc" }, { created_at: "asc" }, { id: "asc" }],
+          select: spaceSelect,
+        }),
+        prisma.project.findMany({
+          where: {
+            AND: [
+              visibleProjectWhere,
+              {
+                OR: [
+                  { name: { contains: q, mode: "insensitive" as const } },
+                  {
+                    company: {
+                      is: {
+                        name: { contains: q, mode: "insensitive" as const },
+                      },
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+          take: limit,
+          orderBy: [{ position: "asc" }, { created_at: "desc" }, { id: "asc" }],
+          include: projectInclude,
+        }),
+        prisma.folder.findMany({
+          where: {
+            workspace_id: auth.currentWorkspaceId,
+            ...(hiddenSpaceIds.length > 0
+              ? { space_id: { notIn: hiddenSpaceIds } }
+              : {}),
+            name: { contains: q, mode: "insensitive" as const },
+          },
+          take: limit,
+          orderBy: [{ position: "asc" }, { created_at: "asc" }, { id: "asc" }],
+          include: folderInclude,
+        }),
+        prisma.sidebarClientPin.findMany({
+          where: {
+            workspace_id: auth.currentWorkspaceId,
+            user_id: auth.prismaUser.id,
+          },
+          orderBy: [{ position: "asc" }, { created_at: "asc" }, { id: "asc" }],
+          select: {
+            id: true,
+            company_id: true,
+            position: true,
+            company: {
+              select: {
+                id: true,
+                name: true,
+                status: true,
+                commercial_status: true,
+                plan_name: true,
+              },
             },
           },
-        },
-      }),
-    ]);
+        }),
+      ]);
 
-    const sidebarProjects = await withProjectPendingTodoCounts(matchingProjects);
+    const sidebarProjects =
+      await withProjectPendingTodoCounts(matchingProjects);
 
     const folderById = await loadSidebarFolderContext(
       matchingFolders,
@@ -262,7 +404,11 @@ async function GET_handler(req: NextRequest) {
                 ? { id: { notIn: hiddenSpaceIds } }
                 : {}),
             },
-            orderBy: [{ position: "asc" }, { created_at: "asc" }, { id: "asc" }],
+            orderBy: [
+              { position: "asc" },
+              { created_at: "asc" },
+              { id: "asc" },
+            ],
             select: spaceSelect,
           })
         : [];
@@ -306,7 +452,9 @@ async function GET_handler(req: NextRequest) {
     }
 
     for (const project of matchingProjects) {
-      const folder = project.folder_id ? folderById.get(project.folder_id) : undefined;
+      const folder = project.folder_id
+        ? folderById.get(project.folder_id)
+        : undefined;
       const spaceId = project.space_id ?? folder?.space_id;
       const space = spaceId ? spaceById.get(spaceId) : undefined;
       searchResults.push({
@@ -343,9 +491,7 @@ async function GET_handler(req: NextRequest) {
     prisma.space.findMany({
       where: {
         workspace_id: auth.currentWorkspaceId,
-        ...(hiddenSpaceIds.length > 0
-          ? { id: { notIn: hiddenSpaceIds } }
-          : {}),
+        ...(hiddenSpaceIds.length > 0 ? { id: { notIn: hiddenSpaceIds } } : {}),
         ...(q && { name: { contains: q, mode: "insensitive" as const } }),
       },
       take: limit + 1,
@@ -360,7 +506,7 @@ async function GET_handler(req: NextRequest) {
       },
       take: limit + 1,
       ...(projectsCursor ? { skip: 1, cursor: { id: projectsCursor } } : {}),
-      orderBy: [{ created_at: "desc" }, { id: "asc" }],
+      orderBy: [{ position: "asc" }, { created_at: "desc" }, { id: "asc" }],
       include: projectInclude,
     }),
     prisma.folder.findMany({

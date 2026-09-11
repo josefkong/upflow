@@ -1,4 +1,13 @@
-import type { ActivityEvent, CalendarEvent, Folder, Project, Space, Task, TeamMember, TimeEntry } from "@/lib/types";
+import type {
+  ActivityEvent,
+  CalendarEvent,
+  Folder,
+  Project,
+  Space,
+  Task,
+  TeamMember,
+  TimeEntry,
+} from "@/lib/types";
 import type { DepartmentSpacePreset } from "@/lib/department-spaces";
 
 export type ContainerList = Pick<Project, "id" | "name">;
@@ -42,7 +51,12 @@ export interface SpaceCommandCenterPayload {
 export interface SpaceDashboardData {
   space: Space;
   department_preset: DepartmentSpacePreset | null;
-  tasks: { items: Task[] };
+  access: {
+    can_operate_space: boolean;
+    is_department_member: boolean;
+    viewer_department_name: string | null;
+  };
+  tasks: { items: Task[]; nextCursor?: string | null };
   projects: { items: Project[] };
   users: { items: TeamMember[] };
   calendar_events: { items: CalendarEvent[] };

@@ -1,23 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { isSuperAdmin } from "@/lib/auth-helpers";
+import { isSuperAdmin, isWorkspaceAdminFor } from "@/lib/auth-helpers";
 import { requireAuth } from "@/lib/auth-response";
-import { getDepartmentSpacePreset } from "@/lib/department-spaces";
+import {
+  getDepartmentSpacePreset,
+  normalizeDepartmentSpaceName,
+} from "@/lib/department-spaces";
 import { buildPage, parsePagination } from "@/lib/pagination";
 import { startOfToday, startOfWeekMonday } from "@/lib/time-range";
 import { timeEntryDurationSeconds } from "@/lib/time-entry-duration";
 import { withErrorReporting } from "@/lib/with-error-reporting";
+import {
+  canViewClientFinancials,
+  redactFinancialMetadata,
+} from "@/lib/client-financial-access";
 
 export const dynamic = "force-dynamic";
 
 const DASHBOARD_EVIDENCE_LIMIT = 100;
 type RouteContext = { params: Promise<{ id: string }> };
 
-async function GET_handler(
-  req: NextRequest,
-  { params }: RouteContext,
-) {
+async function GET_handler(req: NextRequest, { params }: RouteContext) {
   const _r = await requireAuth();
   if (!_r.ok) return _r.response;
   const auth = _r.auth;
@@ -36,6 +40,29 @@ async function GET_handler(
   });
   if (!space) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const departmentPreset = getDepartmentSpacePreset(space.name);
+  const currentMembership = auth.memberships.find(
+    (membership) => membership.workspace_id === space.workspace_id,
+  );
+  const viewerDepartmentName = currentMembership?.department?.name ?? null;
+  const viewerDepartmentPreset = viewerDepartmentName
+    ? getDepartmentSpacePreset(viewerDepartmentName)
+    : null;
+  const isDepartmentMember = Boolean(
+    viewerDepartmentName &&
+    (departmentPreset && viewerDepartmentPreset
+      ? departmentPreset.department_key ===
+        viewerDepartmentPreset.department_key
+      : normalizeDepartmentSpaceName(viewerDepartmentName) ===
+        normalizeDepartmentSpaceName(space.name)),
+  );
+  const canOperateSpace = Boolean(
+    isWorkspaceAdminFor(auth, space.workspace_id) ||
+    (currentMembership?.role !== "guest" && isDepartmentMember),
+  );
+  const financialsVisible = await canViewClientFinancials(
+    auth,
+    space.workspace_id,
+  );
 
   const superAdmin = isSuperAdmin(auth);
   const { limit } = parsePagination(req, { defaultLimit: 200, maxLimit: 500 });
@@ -96,6 +123,12 @@ async function GET_handler(
       orderBy: [{ position: "asc" }, { created_at: "desc" }, { id: "asc" }],
       include: {
         assignee: { select: { id: true, name: true, email: true } },
+        followers: {
+          include: {
+            user: { select: { id: true, name: true, email: true } },
+          },
+          orderBy: { created_at: "asc" },
+        },
         project: { select: { id: true, name: true } },
         custom_field_values: { select: { definition_id: true, value: true } },
         _count: { select: { comments: true, subtasks: true } },
@@ -104,7 +137,11 @@ async function GET_handler(
     prisma.task.findMany({
       where: { ...taskProjectScope, status: { not: "done" } },
       take: DASHBOARD_EVIDENCE_LIMIT,
-      orderBy: [{ due_date: "asc" }, { priority: "desc" }, { created_at: "desc" }],
+      orderBy: [
+        { due_date: "asc" },
+        { priority: "desc" },
+        { created_at: "desc" },
+      ],
       include: {
         assignee: { select: { id: true, name: true, email: true } },
         project: { select: { id: true, name: true } },
@@ -119,7 +156,11 @@ async function GET_handler(
         OR: [{ priority: "high" }, { due_date: { lt: tomorrowStart } }],
       },
       take: 20,
-      orderBy: [{ due_date: "asc" }, { priority: "desc" }, { created_at: "desc" }],
+      orderBy: [
+        { due_date: "asc" },
+        { priority: "desc" },
+        { created_at: "desc" },
+      ],
       include: {
         assignee: { select: { id: true, name: true, email: true } },
         project: { select: { id: true, name: true } },
@@ -139,7 +180,11 @@ async function GET_handler(
         ? undefined
         : {
             memberships: {
-              some: { workspace_id: { in: auth.memberships.map((m) => m.workspace_id) } },
+              some: {
+                workspace_id: {
+                  in: auth.memberships.map((m) => m.workspace_id),
+                },
+              },
             },
           },
       take: limit + 1,
@@ -155,7 +200,11 @@ async function GET_handler(
         memberships: {
           where: superAdmin
             ? undefined
-            : { workspace_id: { in: auth.memberships.map((m) => m.workspace_id) } },
+            : {
+                workspace_id: {
+                  in: auth.memberships.map((m) => m.workspace_id),
+                },
+              },
           select: {
             workspace_id: true,
             role: true,
@@ -171,7 +220,11 @@ async function GET_handler(
     }),
     prisma.task.groupBy({
       by: ["assignee_id"],
-      where: { ...taskProjectScope, status: { not: "done" }, assignee_id: { not: null } },
+      where: {
+        ...taskProjectScope,
+        status: { not: "done" },
+        assignee_id: { not: null },
+      },
       _count: { _all: true },
     }),
     prisma.task.groupBy({
@@ -207,7 +260,10 @@ async function GET_handler(
 
   const projectIdList = projectIds.map((project) => project.id);
   const scopedCalendarOrTimeWhere = {
-    OR: [{ project: spaceProjectWhere }, { task: { project: spaceProjectWhere } }],
+    OR: [
+      { project: spaceProjectWhere },
+      { task: { project: spaceProjectWhere } },
+    ],
   };
   const hasScopedRecords = projectIdList.length > 0;
 
@@ -230,7 +286,9 @@ async function GET_handler(
           orderBy: [{ starts_at: "asc" }, { id: "asc" }],
           include: {
             attendees: {
-              include: { user: { select: { id: true, name: true, email: true } } },
+              include: {
+                user: { select: { id: true, name: true, email: true } },
+              },
             },
           },
         })
@@ -244,7 +302,9 @@ async function GET_handler(
           take: 20,
           orderBy: [{ created_at: "desc" }, { id: "asc" }],
           include: {
-            actor: { select: { id: true, name: true, email: true, avatar_url: true } },
+            actor: {
+              select: { id: true, name: true, email: true, avatar_url: true },
+            },
           },
         })
       : Promise.resolve([]),
@@ -310,7 +370,9 @@ async function GET_handler(
   ]);
 
   const flattenedUsers = users.map((u) => {
-    const activeMembership = u.memberships.find((m) => m.workspace_id === space.workspace_id);
+    const activeMembership = u.memberships.find(
+      (m) => m.workspace_id === space.workspace_id,
+    );
     const { memberships: _memberships, ...rest } = u;
     void _memberships;
     return {
@@ -331,20 +393,31 @@ async function GET_handler(
     openTaskCountsByAssignee.map((row) => [row.assignee_id, row._count._all]),
   );
   const overdueByAssignee = new Map(
-    overdueTaskCountsByAssignee.map((row) => [row.assignee_id, row._count._all]),
+    overdueTaskCountsByAssignee.map((row) => [
+      row.assignee_id,
+      row._count._all,
+    ]),
   );
   const dueTodayByAssignee = new Map(
-    dueTodayTaskCountsByAssignee.map((row) => [row.assignee_id, row._count._all]),
+    dueTodayTaskCountsByAssignee.map((row) => [
+      row.assignee_id,
+      row._count._all,
+    ]),
   );
 
   const todayTimeByUser = new Map<string, number>();
   for (const entry of todayTimeEntries) {
     const duration = timeEntryDurationSeconds(entry);
-    todayTimeByUser.set(entry.user_id, (todayTimeByUser.get(entry.user_id) ?? 0) + duration);
+    todayTimeByUser.set(
+      entry.user_id,
+      (todayTimeByUser.get(entry.user_id) ?? 0) + duration,
+    );
   }
 
   const workload = flattenedUsers.map((member) => {
-    const assignedOpenTasks = openTasks.filter((task) => task.assignee_id === member.id);
+    const assignedOpenTasks = openTasks.filter(
+      (task) => task.assignee_id === member.id,
+    );
     const openTaskCount = countByAssignee.get(member.id) ?? 0;
     const overdueTaskCount = overdueByAssignee.get(member.id) ?? 0;
     const dueTodayTaskCount = dueTodayByAssignee.get(member.id) ?? 0;
@@ -379,27 +452,56 @@ async function GET_handler(
     .map((project) => {
       const reasons: string[] = [];
       const overdue = overdueByProject.get(project.id) ?? 0;
-      if (overdue > 0) reasons.push(`${overdue} overdue open task${overdue === 1 ? "" : "s"}`);
+      if (overdue > 0)
+        reasons.push(`${overdue} overdue open task${overdue === 1 ? "" : "s"}`);
       if (!project.owner_id) reasons.push("No owner");
-      if (!recentProjectIds.has(project.id)) reasons.push("No activity in 7 days");
+      if (!recentProjectIds.has(project.id))
+        reasons.push("No activity in 7 days");
       return { project, reasons };
     })
     .filter((item) => item.reasons.length > 0)
     .slice(0, 20);
 
-  const todayEntriesForMe = todayTimeEntries.filter((entry) => entry.user_id === auth.prismaUser.id);
+  const todayEntriesForMe = todayTimeEntries.filter(
+    (entry) => entry.user_id === auth.prismaUser.id,
+  );
   const totalSecondsToday = todayEntriesForMe.reduce((sum, entry) => {
     return sum + timeEntryDurationSeconds(entry);
   }, 0);
 
+  const visibleActivity = activity.map((event) => ({
+    ...event,
+    metadata: redactFinancialMetadata(event.metadata, financialsVisible),
+  }));
+
   return NextResponse.json({
     space,
     department_preset: departmentPreset,
+    access: {
+      can_operate_space: canOperateSpace,
+      is_department_member: isDepartmentMember,
+      viewer_department_name: viewerDepartmentName,
+    },
     tasks: buildPage(tasks, limit),
-    projects: buildPage(projects, limit),
+    projects: buildPage(
+      projects.map((project) => ({
+        ...project,
+        company: project.company
+          ? {
+              ...project.company,
+              contract_value: financialsVisible
+                ? project.company.contract_value
+                : null,
+              commission: financialsVisible ? project.company.commission : null,
+            }
+          : null,
+      })),
+      limit,
+    ),
+    financials_visible: financialsVisible,
     users: buildPage(flattenedUsers, limit),
     calendar_events: { items: calendarEvents, nextCursor: null },
-    activity: { items: activity, nextCursor: null },
+    activity: { items: visibleActivity, nextCursor: null },
     time: {
       running: runningEntry,
       week_entries: weekTimeEntries,
@@ -413,7 +515,7 @@ async function GET_handler(
         entries: todayEntriesForMe,
       },
       meetings_today: { items: calendarEvents, count: calendarEvents.length },
-      recent_activity: { items: activity, count: activity.length },
+      recent_activity: { items: visibleActivity, count: activity.length },
       projects_at_risk: {
         items: projectsAtRisk,
         count: projectsAtRisk.length,
@@ -426,4 +528,7 @@ async function GET_handler(
   });
 }
 
-export const GET = withErrorReporting("api:spaces/id/dashboard:GET", GET_handler);
+export const GET = withErrorReporting(
+  "api:spaces/id/dashboard:GET",
+  GET_handler,
+);

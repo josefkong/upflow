@@ -5,6 +5,10 @@ import { requireAuth } from "@/lib/auth-response";
 import { buildPage, parsePagination } from "@/lib/pagination";
 import { withErrorReporting } from "@/lib/with-error-reporting";
 import { recordActivity } from "@/lib/activity";
+import { ensureOnboardingMirrorProjectForSpace } from "@/lib/onboarding";
+import { ensureWorkspaceClientsProjects } from "@/lib/client-space-structure";
+import { ensureSharedContractsRegistryProjects } from "@/lib/commercial-contract-mirror";
+import { ensureEquipmentControlProject } from "@/lib/equipment-control";
 
 async function GET_handler(req: NextRequest) {
   const _r = await requireAuth();
@@ -13,7 +17,10 @@ async function GET_handler(req: NextRequest) {
   if (!auth.currentWorkspaceId) {
     return NextResponse.json({ items: [], nextCursor: null });
   }
-  const { limit, cursor } = parsePagination(req, { defaultLimit: 200, maxLimit: 500 });
+  const { limit, cursor } = parsePagination(req, {
+    defaultLimit: 200,
+    maxLimit: 500,
+  });
   const rows = await prisma.space.findMany({
     where: { workspace_id: auth.currentWorkspaceId },
     take: limit + 1,
@@ -40,7 +47,8 @@ async function POST_handler(req: NextRequest) {
   }
   const body = (await req.json()) as { name?: string; icon?: string | null };
   const name = body.name?.trim();
-  if (!name) return NextResponse.json({ error: "Name is required" }, { status: 400 });
+  if (!name)
+    return NextResponse.json({ error: "Name is required" }, { status: 400 });
 
   const last = await prisma.space.findFirst({
     where: { workspace_id: auth.currentWorkspaceId },
@@ -48,15 +56,39 @@ async function POST_handler(req: NextRequest) {
   });
   const position = (last?.position ?? -1) + 1;
 
-  const space = await prisma.space.create({
-    data: {
-      name,
-      icon: body.icon ?? null,
-      workspace_id: auth.currentWorkspaceId,
-      owner_id: auth.prismaUser.id,
-      position,
-    },
-    include: { _count: { select: { projects: true } } },
+  const space = await prisma.$transaction(async (tx) => {
+    const createdSpace = await tx.space.create({
+      data: {
+        name,
+        icon: body.icon ?? null,
+        workspace_id: auth.currentWorkspaceId,
+        owner_id: auth.prismaUser.id,
+        position,
+      },
+    });
+    await ensureOnboardingMirrorProjectForSpace(tx, {
+      workspaceId: auth.currentWorkspaceId,
+      spaceId: createdSpace.id,
+      spaceName: createdSpace.name,
+      ownerId: auth.prismaUser.id,
+    });
+    await ensureWorkspaceClientsProjects(tx, {
+      workspaceId: auth.currentWorkspaceId,
+      ownerId: auth.prismaUser.id,
+    });
+    await ensureSharedContractsRegistryProjects(tx, {
+      workspaceId: auth.currentWorkspaceId,
+      fallbackOwnerId: auth.prismaUser.id,
+    });
+    await ensureEquipmentControlProject(tx, {
+      workspaceId: auth.currentWorkspaceId,
+      ownerId: auth.prismaUser.id,
+      spaceId: createdSpace.id,
+    });
+    return tx.space.findUniqueOrThrow({
+      where: { id: createdSpace.id },
+      include: { _count: { select: { projects: true } } },
+    });
   });
   await recordActivity({
     workspace_id: auth.currentWorkspaceId,

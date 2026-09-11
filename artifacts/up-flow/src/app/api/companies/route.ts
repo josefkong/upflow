@@ -10,6 +10,12 @@ import { recordActivity } from "@/lib/activity";
 import { startClientOnboardingForCompany } from "@/lib/onboarding";
 import { buildPage, parsePagination } from "@/lib/pagination";
 import { timeEntryDurationSeconds } from "@/lib/time-entry-duration";
+import {
+  canViewClientFinancials,
+  redactClientFinancials,
+} from "@/lib/client-financial-access";
+import { formatBrazilianCnpj, isBrazilianCnpj } from "@/lib/brazilian-cnpj";
+import { formatBrazilianMobile, isBrazilianMobile } from "@/lib/brazilian-mobile";
 
 const ClientSalesChannelSchema = z.enum(["WHOLESALE", "RETAIL", "BOTH"]);
 const CompanySalesChannelFilterSchema = z.enum([
@@ -41,8 +47,13 @@ const CompanySchema = z.object({
   service_type: z.string().trim().optional().nullable(),
   plan_name: z.string().trim().optional().nullable(),
   billing_cycle: z.string().trim().optional().nullable(),
-  included_services: z.array(z.string().trim().min(1)).max(50).optional().nullable(),
+  included_services: z
+    .array(z.string().trim().min(1))
+    .max(50)
+    .optional()
+    .nullable(),
   start_onboarding: z.boolean().optional(),
+  complete_registration: z.boolean().optional(),
   plan_notes: z.string().trim().optional().nullable(),
   notes: z.string().trim().optional().nullable(),
   legal_name: z.string().trim().optional().nullable(),
@@ -71,8 +82,15 @@ async function GET_handler(req: NextRequest) {
   if (!auth.currentWorkspaceId) {
     return NextResponse.json({ items: [], nextCursor: null });
   }
+  const canViewFinancials = await canViewClientFinancials(
+    auth,
+    auth.currentWorkspaceId,
+  );
 
-  const { limit, cursor } = parsePagination(req, { defaultLimit: 50, maxLimit: 100 });
+  const { limit, cursor } = parsePagination(req, {
+    defaultLimit: 50,
+    maxLimit: 100,
+  });
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") || "").trim();
   if (q.length > 200) {
@@ -83,7 +101,10 @@ async function GET_handler(req: NextRequest) {
   );
   if (!parsedSalesChannel.success) {
     return NextResponse.json(
-      { error: "Invalid sales_channel. Use all, wholesale, retail, both, or unclassified." },
+      {
+        error:
+          "Invalid sales_channel. Use all, wholesale, retail, both, or unclassified.",
+      },
       { status: 400 },
     );
   }
@@ -133,7 +154,11 @@ async function GET_handler(req: NextRequest) {
             { plan_name: { contains: q, mode: "insensitive" as const } },
             { service_type: { contains: q, mode: "insensitive" as const } },
             { industry: { contains: q, mode: "insensitive" as const } },
-            { owner: { is: { name: { contains: q, mode: "insensitive" as const } } } },
+            {
+              owner: {
+                is: { name: { contains: q, mode: "insensitive" as const } },
+              },
+            },
           ],
         }
       : {}),
@@ -153,7 +178,14 @@ async function GET_handler(req: NextRequest) {
       ...pageOptions,
       include: companyListInclude,
     });
-    return NextResponse.json(buildPage(rows, limit));
+    const page = buildPage(rows, limit);
+    return NextResponse.json({
+      ...page,
+      items: page.items.map((company) =>
+        redactClientFinancials(company, canViewFinancials),
+      ),
+      financials_visible: canViewFinancials,
+    });
   }
 
   const rows = await prisma.company.findMany({
@@ -212,8 +244,11 @@ async function GET_handler(req: NextRequest) {
 
   const page = buildPage(rows, limit);
   return NextResponse.json({
-    items: page.items.map(withCompanySummary),
+    items: page.items.map((company) =>
+      redactClientFinancials(withCompanySummary(company), canViewFinancials),
+    ),
     nextCursor: page.nextCursor,
+    financials_visible: canViewFinancials,
   });
 }
 
@@ -227,13 +262,29 @@ async function POST_handler(req: NextRequest) {
 
   const parsed = CompanySchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid company", issues: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid company", issues: parsed.error.flatten() },
+      { status: 400 },
+    );
+  }
+  const includesFinancialData =
+    parsed.data.contract_value != null ||
+    parsed.data.commission != null ||
+    Boolean(parsed.data.payment_terms?.trim()) ||
+    Boolean(parsed.data.billing_notes?.trim());
+  const canViewFinancials = await canViewClientFinancials(
+    auth,
+    auth.currentWorkspaceId,
+  );
+  if (includesFinancialData && !canViewFinancials) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   // Creating a company is standalone unless a caller explicitly opts into
   // onboarding. This prevents client-only forms and saved drafts from
   // accidentally creating onboarding tasks, projects, or notifications.
   const startOnboarding = parsed.data.start_onboarding ?? false;
+  const completeRegistration = parsed.data.complete_registration ?? false;
   const currentMembership = auth.memberships.find(
     (membership) => membership.workspace_id === auth.currentWorkspaceId,
   );
@@ -251,14 +302,86 @@ async function POST_handler(req: NextRequest) {
   });
   const allowed = startOnboarding
     ? companyCreationAccess.canStartOnboarding
-    : companyCreationAccess.canCreateStandalone;
+    : completeRegistration
+      ? companyCreationAccess.canCreateCompleteClient
+      : companyCreationAccess.canCreateStandalone;
   if (!allowed) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  if (completeRegistration) {
+    const requiredFields = [
+      parsed.data.legal_name,
+      parsed.data.cnpj,
+      parsed.data.service_type,
+      parsed.data.plan_name,
+      parsed.data.contract_start_date,
+      parsed.data.owner_id,
+      parsed.data.responsible_department_id,
+      parsed.data.contact_name,
+      parsed.data.contact_email,
+      parsed.data.contact_phone,
+    ];
+    if (
+      requiredFields.some((value) => !value?.trim()) ||
+      !parsed.data.included_services?.length
+    ) {
+      return NextResponse.json(
+        { error: "Complete client registration requires every operational and contract field." },
+        { status: 400 },
+      );
+    }
+    if (!isBrazilianCnpj(parsed.data.cnpj ?? "")) {
+      return NextResponse.json({ error: "Informe um CNPJ válido." }, { status: 400 });
+    }
+    if (!isBrazilianMobile(parsed.data.contact_phone ?? "")) {
+      return NextResponse.json(
+        { error: "Informe um WhatsApp no formato DD XXXXX-XXXX." },
+        { status: 400 },
+      );
+    }
+    if (
+      canViewFinancials &&
+      (parsed.data.contract_value == null || parsed.data.contract_value <= 0)
+    ) {
+      return NextResponse.json(
+        { error: "Informe um valor mensal de contrato válido." },
+        { status: 400 },
+      );
+    }
+    const contractStartDate = new Date(parsed.data.contract_start_date ?? "");
+    if (Number.isNaN(contractStartDate.getTime())) {
+      return NextResponse.json(
+        { error: "Informe uma data de início do contrato válida." },
+        { status: 400 },
+      );
+    }
+    const duplicate = await prisma.company.findFirst({
+      where: {
+        workspace_id: auth.currentWorkspaceId,
+        OR: [
+          { name: { equals: parsed.data.name, mode: "insensitive" } },
+          { cnpj: formatBrazilianCnpj(parsed.data.cnpj ?? "") },
+        ],
+      },
+      select: { id: true },
+    });
+    if (duplicate) {
+      return NextResponse.json(
+        { error: "Já existe um cliente com esta marca ou CNPJ." },
+        { status: 409 },
+      );
+    }
+  }
+
   let ownerId = auth.prismaUser.id;
-  // Every standalone client starts with its creator as owner; admins can reassign it afterward.
-  if (startOnboarding && !companyCreationAccess.forceCreatorAsOwner && parsed.data.owner_id) {
+  // Standalone records keep their creator as owner. Onboarding and complete
+  // registrations may select any active member from the current workspace.
+  if (
+    (startOnboarding || completeRegistration) &&
+    !companyCreationAccess.forceCreatorAsOwner &&
+    parsed.data.owner_id
+  ) {
     const selectedOwner = await prisma.workspaceMember.findFirst({
       where: {
         workspace_id: auth.currentWorkspaceId,
@@ -268,7 +391,10 @@ async function POST_handler(req: NextRequest) {
       select: { user_id: true },
     });
     if (!selectedOwner) {
-      return NextResponse.json({ error: "Selected assignee is not an active workspace member" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Selected assignee is not an active workspace member" },
+        { status: 400 },
+      );
     }
     ownerId = selectedOwner.user_id;
   }
@@ -283,18 +409,23 @@ async function POST_handler(req: NextRequest) {
       select: { name: true },
     });
     if (!department) {
-      return NextResponse.json({ error: "Selected department does not belong to this workspace" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Selected department does not belong to this workspace" },
+        { status: 400 },
+      );
     }
     departmentName = department.name;
   }
 
-  const contactName = parsed.data.contact_name || parsed.data.contact_email || "";
-  const notes = [
-    parsed.data.notes || null,
-    departmentName ? `Responsible department: ${departmentName}` : null,
-  ]
-    .filter(Boolean)
-    .join("\n\n") || null;
+  const contactName =
+    parsed.data.contact_name || parsed.data.contact_email || "";
+  const notes =
+    [
+      parsed.data.notes || null,
+      departmentName ? `Responsible department: ${departmentName}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n\n") || null;
 
   const company = await prisma.company.create({
     data: {
@@ -304,7 +435,8 @@ async function POST_handler(req: NextRequest) {
       description: parsed.data.description || null,
       website: parsed.data.website || null,
       status: parsed.data.status || "active",
-      commercial_status: parsed.data.commercial_status || null,
+      commercial_status:
+        parsed.data.commercial_status || (completeRegistration ? "active" : null),
       contract_value: parsed.data.contract_value ?? null,
       commission: parsed.data.commission ?? null,
       industry: parsed.data.industry || null,
@@ -312,19 +444,25 @@ async function POST_handler(req: NextRequest) {
       service_type: parsed.data.service_type || null,
       plan_name: parsed.data.plan_name || null,
       billing_cycle: parsed.data.billing_cycle || null,
-      included_services: parsed.data.included_services?.length ? parsed.data.included_services : undefined,
+      included_services: parsed.data.included_services?.length
+        ? parsed.data.included_services
+        : undefined,
       plan_notes: parsed.data.plan_notes || null,
       notes,
       legal_name: parsed.data.legal_name || null,
-      cnpj: parsed.data.cnpj || null,
+      cnpj: parsed.data.cnpj ? formatBrazilianCnpj(parsed.data.cnpj) : null,
       billing_email: parsed.data.billing_email || null,
       main_contact_email: parsed.data.main_contact_email || null,
-      phone: parsed.data.phone || null,
-      whatsapp: parsed.data.whatsapp || null,
+      phone: parsed.data.phone ? formatBrazilianMobile(parsed.data.phone) : null,
+      whatsapp: parsed.data.whatsapp
+        ? formatBrazilianMobile(parsed.data.whatsapp)
+        : null,
       address: parsed.data.address || null,
       billing_notes: parsed.data.billing_notes || null,
       payment_terms: parsed.data.payment_terms || null,
-      contract_start_date: parsed.data.contract_start_date ? new Date(parsed.data.contract_start_date) : null,
+      contract_start_date: parsed.data.contract_start_date
+        ? new Date(parsed.data.contract_start_date)
+        : null,
       ...(contactName || parsed.data.contact_phone
         ? {
             contacts: {
@@ -332,7 +470,9 @@ async function POST_handler(req: NextRequest) {
                 workspace_id: auth.currentWorkspaceId,
                 name: contactName || "Primary contact",
                 email: parsed.data.contact_email || null,
-                phone: parsed.data.contact_phone || null,
+                phone: parsed.data.contact_phone
+                  ? formatBrazilianMobile(parsed.data.contact_phone)
+                  : null,
                 role: parsed.data.contact_role || "Primary contact",
               },
             },
@@ -356,23 +496,28 @@ async function POST_handler(req: NextRequest) {
       owner_id: ownerId,
       responsible_department: departmentName,
       contact_email: parsed.data.contact_email || null,
+      complete_registration: completeRegistration,
     },
   });
 
-  const onboardingResult = startOnboarding === false
-    ? null
-    : await startClientOnboardingForCompany({
-        companyId: company.id,
-        workspaceId: auth.currentWorkspaceId,
-        actorId: auth.prismaUser.id,
-        services: parsed.data.included_services ?? undefined,
-        expectedStartDate: parsed.data.contract_start_date ? new Date(parsed.data.contract_start_date) : null,
-        initialNotes: notes,
-        responsibleSalespersonId: ownerId,
-        responsibleDepartmentId: parsed.data.responsible_department_id ?? null,
-        responsibleDepartmentName: departmentName,
-        source: "company_card",
-      });
+  const onboardingResult =
+    startOnboarding === false
+      ? null
+      : await startClientOnboardingForCompany({
+          companyId: company.id,
+          workspaceId: auth.currentWorkspaceId,
+          actorId: auth.prismaUser.id,
+          services: parsed.data.included_services ?? undefined,
+          expectedStartDate: parsed.data.contract_start_date
+            ? new Date(parsed.data.contract_start_date)
+            : null,
+          initialNotes: notes,
+          responsibleSalespersonId: ownerId,
+          responsibleDepartmentId:
+            parsed.data.responsible_department_id ?? null,
+          responsibleDepartmentName: departmentName,
+          source: "company_card",
+        });
 
   return NextResponse.json(
     {
@@ -390,59 +535,70 @@ async function POST_handler(req: NextRequest) {
 export const GET = withErrorReporting("api:companies:GET", GET_handler);
 export const POST = withErrorReporting("api:companies:POST", POST_handler);
 
-function withCompanySummary<T extends {
-  contract_value: number | null;
-  commission: number | null;
-  owner?: { id: string; name: string; email: string } | null;
-  contacts?: Array<{ id: string }>;
-  calendar_events?: Array<{ id: string }>;
-  activity_events?: Array<{
-    type: string;
-    created_at: Date;
-    actor?: { id: string; name: string; email: string } | null;
-  }>;
-  tasks?: Array<{
-    id: string;
-    title: string;
-    status: string;
-    due_date: Date | null;
-    assignee?: { id: string; name: string; email: string } | null;
-  }>;
-  projects?: Array<{
-    id: string;
-    name: string;
-    status: string;
-    due_date: Date | null;
+function withCompanySummary<
+  T extends {
+    contract_value: number | null;
+    commission: number | null;
     owner?: { id: string; name: string; email: string } | null;
-    time_entries?: Array<{
-      id: string;
-      started_at: Date;
-      active_started_at: Date | null;
-      duration_seconds: number;
-      status: "running" | "paused" | "stopped";
+    contacts?: Array<{ id: string }>;
+    calendar_events?: Array<{ id: string }>;
+    activity_events?: Array<{
+      type: string;
+      created_at: Date;
+      actor?: { id: string; name: string; email: string } | null;
     }>;
-    tasks: Array<{
+    tasks?: Array<{
       id: string;
       title: string;
       status: string;
       due_date: Date | null;
       assignee?: { id: string; name: string; email: string } | null;
     }>;
-  }>;
-}>(company: T) {
+    projects?: Array<{
+      id: string;
+      name: string;
+      status: string;
+      due_date: Date | null;
+      owner?: { id: string; name: string; email: string } | null;
+      time_entries?: Array<{
+        id: string;
+        started_at: Date;
+        active_started_at: Date | null;
+        duration_seconds: number;
+        status: "running" | "paused" | "stopped";
+      }>;
+      tasks: Array<{
+        id: string;
+        title: string;
+        status: string;
+        due_date: Date | null;
+        assignee?: { id: string; name: string; email: string } | null;
+      }>;
+    }>;
+  },
+>(company: T) {
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const sevenDaysAgo = new Date(todayStart);
   sevenDaysAgo.setDate(todayStart.getDate() - 7);
   const projects = company.projects ?? [];
-  const tasksById = new Map<string, NonNullable<T["tasks"]>[number] | NonNullable<T["projects"]>[number]["tasks"][number]>();
+  const tasksById = new Map<
+    string,
+    | NonNullable<T["tasks"]>[number]
+    | NonNullable<T["projects"]>[number]["tasks"][number]
+  >();
   for (const task of company.tasks ?? []) tasksById.set(task.id, task);
-  for (const task of projects.flatMap((project) => project.tasks)) tasksById.set(task.id, task);
+  for (const task of projects.flatMap((project) => project.tasks))
+    tasksById.set(task.id, task);
   const tasks = Array.from(tasksById.values());
   const timeEntries = projects.flatMap((project) => project.time_entries ?? []);
-  const activeProjects = projects.filter((project) => project.status === "active");
+  const activeProjects = projects.filter(
+    (project) => project.status === "active",
+  );
   const openTasks = tasks.filter((task) => task.status !== "done");
-  const overdueTasks = openTasks.filter((task) => task.due_date && task.due_date < todayStart);
+  const overdueTasks = openTasks.filter(
+    (task) => task.due_date && task.due_date < todayStart,
+  );
   const nextDeadline =
     [
       ...projects
@@ -457,15 +613,22 @@ function withCompanySummary<T extends {
 
   if (projects.length === 0) riskReasons.push("No linked projects");
   if ((company.contacts?.length ?? 0) === 0) riskReasons.push("No contacts");
-  if (overdueTasks.length > 0) riskReasons.push(`${overdueTasks.length} overdue task${overdueTasks.length === 1 ? "" : "s"}`);
-  if (!lastActivityAt || lastActivityAt < sevenDaysAgo) riskReasons.push("No activity in 7 days");
+  if (overdueTasks.length > 0)
+    riskReasons.push(
+      `${overdueTasks.length} overdue task${overdueTasks.length === 1 ? "" : "s"}`,
+    );
+  if (!lastActivityAt || lastActivityAt < sevenDaysAgo)
+    riskReasons.push("No activity in 7 days");
   if (company.contract_value == null) riskReasons.push("No contract value");
   const trackedSeconds = timeEntries.reduce(
     (sum, entry) => sum + timeEntryDurationSeconds(entry),
     0,
   );
   const trackedHours = trackedSeconds / 3600;
-  const assignedMembers = new Map<string, { id: string; name: string; email: string }>();
+  const assignedMembers = new Map<
+    string,
+    { id: string; name: string; email: string }
+  >();
   if (company.owner) assignedMembers.set(company.owner.id, company.owner);
   for (const project of projects) {
     if (project.owner) assignedMembers.set(project.owner.id, project.owner);
@@ -473,16 +636,22 @@ function withCompanySummary<T extends {
   for (const task of tasks) {
     if (task.assignee) assignedMembers.set(task.assignee.id, task.assignee);
   }
-  const hasPlanData = Boolean(company.contract_value != null || company.commission != null);
-  const hasServiceData = Boolean((company as { service_type?: unknown }).service_type || (company as { plan_name?: unknown }).plan_name);
-  const healthStatus =
-    riskReasons.some((reason) => reason.includes("overdue") || reason === "No linked projects")
-      ? "risk"
-      : riskReasons.length > 0
-        ? "attention"
-        : projects.length === 0 && !hasPlanData && !hasServiceData
-          ? "not_enough_data"
-          : "healthy";
+  const hasPlanData = Boolean(
+    company.contract_value != null || company.commission != null,
+  );
+  const hasServiceData = Boolean(
+    (company as { service_type?: unknown }).service_type ||
+    (company as { plan_name?: unknown }).plan_name,
+  );
+  const healthStatus = riskReasons.some(
+    (reason) => reason.includes("overdue") || reason === "No linked projects",
+  )
+    ? "risk"
+    : riskReasons.length > 0
+      ? "attention"
+      : projects.length === 0 && !hasPlanData && !hasServiceData
+        ? "not_enough_data"
+        : "healthy";
 
   return {
     ...company,

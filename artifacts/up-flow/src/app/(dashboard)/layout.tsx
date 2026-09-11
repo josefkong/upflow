@@ -4,7 +4,8 @@ import Sidebar from "@/components/layout/sidebar";
 import { UserProvider } from "@/components/user-provider";
 import type { AppUser } from "@/lib/types";
 import { getAuthResult, isSuperAdmin } from "@/lib/auth-helpers";
-const DESKTOP_SIDEBAR_KEY = "upflow.sidebar.desktopOpen.v1";
+import { resolveClientsNavigationHref } from "@/lib/client-navigation";
+const DESKTOP_SIDEBAR_KEY = "upflow.sidebar.desktopOpen.v2";
 
 export default async function DashboardLayout({
   children,
@@ -46,6 +47,11 @@ export default async function DashboardLayout({
     slug: membership.workspace.slug,
     role: membership.role,
   }));
+  const clientsHref = await resolveClientsNavigationHref({
+    workspaceId: auth.currentWorkspaceId,
+    userId: prismaUser.id,
+    departmentName: currentMembership?.department?.name,
+  });
 
   return (
     <UserProvider user={user}>
@@ -54,9 +60,10 @@ export default async function DashboardLayout({
           <Sidebar
             user={user}
             workspaces={workspaces}
+            clientsHref={clientsHref}
             initialDesktopSidebarOpen={initialDesktopSidebarOpen}
           />
-          <main className="relative min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <main className="relative min-w-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]">
             <div className="relative z-10 min-w-0">{children}</div>
           </main>
         </div>

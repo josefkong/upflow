@@ -22,13 +22,13 @@ test("list view uses contribution capability for every inline task mutation", ()
     listView,
     /const updateTask = async[\s\S]*?\{\s*if \(!canMutateTasks\) return;[\s\S]*?fetch\(`\/api\/tasks\/\$\{taskId\}`/,
   );
-  assert.match(listView, /\{canMutateTasks && \(/);
+  assert.match(listView, /\{canMutateTasks && canAddTasks && \(/);
 });
 
 test("list view disables edit controls and cannot enable bulk mutation for read-only members", () => {
   const listView = read("src/components/projects/list-view.tsx");
 
-  assert.match(listView, /selectionMode && onToggleTaskSelection && canMutateTasks/);
+  assert.match(listView, /selectionMode &&\s*onToggleTaskSelection &&\s*canMutateTasks/);
   assert.match(
     listView,
     /value=\{t\.assignee\?\.id \?\? ""\}[\s\S]*?disabled=\{!canMutateTasks\}/,
@@ -41,10 +41,7 @@ test("list view disables edit controls and cannot enable bulk mutation for read-
     listView,
     /value=\{t\.priority\}[\s\S]*?disabled=\{!canMutateTasks\}/,
   );
-  assert.match(
-    listView,
-    /value=\{t\.status\}[\s\S]*?disabled=\{!canMutateTasks\}/,
-  );
+  assert.match(listView, /value=\{t\.status\}[\s\S]*?disabled[\s\S]*?task\.automaticMovementOnly/);
   assert.match(
     listView,
     /<fieldset\s+disabled=\{!canMutateTasks\}[\s\S]*?<CustomFieldInput/s,

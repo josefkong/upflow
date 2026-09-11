@@ -40,6 +40,8 @@ test("projects and clients expose card delete actions backed by DELETE routes", 
   assert.match(projectRoute, /deleteProjectsByIds/);
   assert.match(projectDelete, /deleteTasksByIds/);
   assert.match(taskDelete, /collectTaskDescendantIds/);
+  assert.match(taskDelete, /commercialLead\.findMany/);
+  assert.match(taskDelete, /follow_up_task_id/);
   assert.match(taskDelete, /taskDependency\.deleteMany/);
   assert.match(taskDelete, /notification\.deleteMany/);
   assert.match(taskDelete, /timeEntry\.deleteMany/);
@@ -70,7 +72,7 @@ test("projects and clients expose card delete actions backed by DELETE routes", 
   assert.match(projectDetailPage, /deletingSelectedTasks/);
   assert.match(projectDetailPage, /fetch\("\/api\/tasks"/);
   assert.match(kanbanBoard, /onToggleTaskSelection/);
-  assert.match(kanbanBoard, /isDragDisabled=\{!canCreate \|\| selectionMode\}/);
+  assert.match(kanbanBoard, /isDragDisabled=\{\s*!canCreate \|\|\s*selectionMode/s);
   assert.match(listView, /onToggleTaskSelection/);
   assert.match(projectToolbar, /task\.selectTasks/);
   assert.match(projectToolbar, /onToggleSelectionMode/);
@@ -90,5 +92,5 @@ test("projects and clients expose card delete actions backed by DELETE routes", 
   assert.match(companyRoute, /FOR UPDATE[\s\S]*project\.updateMany/);
   assert.doesNotMatch(companyRoute, /TransactionIsolationLevel\.Serializable/);
   assert.match(companyRoute, /tx\.company\.delete/);
-  assert.match(companyRoute, /export const DELETE = withErrorReporting\("api:companies\/id:DELETE", DELETE_handler\)/);
+  assert.match(companyRoute, /export const DELETE = withErrorReporting\(\s*"api:companies\/id:DELETE",\s*DELETE_handler/s);
 });

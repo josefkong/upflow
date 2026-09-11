@@ -118,7 +118,7 @@ export default function GoogleCalendarIntegrationCard({
       });
       const statusPayload = (await readJson(
         statusResponse,
-        "Unable to load Google Calendar status.",
+        t("googleCalendar.loadFailed"),
       )) as GoogleCalendarStatus;
 
       if (signal?.aborted) return;
@@ -135,7 +135,7 @@ export default function GoogleCalendarIntegrationCard({
       });
       const calendarsPayload = (await readJson(
         calendarsResponse,
-        "Unable to load Google calendars.",
+        t("googleCalendar.loadFailed"),
       )) as { items?: GoogleCalendarItem[] };
 
       if (signal?.aborted) return;
@@ -147,11 +147,11 @@ export default function GoogleCalendarIntegrationCard({
       }
     } catch (error) {
       if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
-      setLoadError(error instanceof Error ? error.message : "Unable to load Google Calendar status.");
+      setLoadError(error instanceof Error ? error.message : t("googleCalendar.loadFailed"));
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [applyStatus]);
+  }, [applyStatus, t]);
 
   useEffect(() => {
     const controller = new AbortController();

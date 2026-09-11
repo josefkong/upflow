@@ -373,7 +373,7 @@ export default function FinanceOnboardingForm({ taskId, onClose, onUpdate, embed
               <SectionTitle title={copy.account} />
               <div className="grid gap-4 md:grid-cols-2">
                 <Field icon={<Building2 className="h-5 w-5" />} label={copy.legal_name} saving={savingField === "legal_name"} saved={savedField === "legal_name"}>
-                  <input value={values.legal_name} disabled={!form?.can_edit} onChange={(event) => setField("legal_name", event.target.value)} placeholder="Ex.: Lilia Rosa" className={fieldInputClassName} />
+                  <input value={values.legal_name} disabled={!form?.can_edit} onChange={(event) => setField("legal_name", event.target.value)} placeholder={isPt ? "Ex.: Lilia Rosa" : "E.g. Lilia Rosa"} className={fieldInputClassName} />
                 </Field>
                 <Field icon={<IdCard className="h-5 w-5" />} label={copy.cnpj} saving={savingField === "cnpj"} saved={savedField === "cnpj"}>
                   <input value={values.cnpj} disabled={!form?.can_edit} onChange={(event) => setField("cnpj", event.target.value)} placeholder="00.000.000/0000-00" className={fieldInputClassName} />
@@ -382,7 +382,7 @@ export default function FinanceOnboardingForm({ taskId, onClose, onUpdate, embed
                   <input value={values.phone} disabled={!form?.can_edit} onChange={(event) => setField("phone", event.target.value)} placeholder="(11) 99999-9999" className={fieldInputClassName} />
                 </Field>
                 <Field icon={<Mail className="h-5 w-5" />} label={copy.billing_email} saving={savingField === "billing_email"} saved={savedField === "billing_email"}>
-                  <input value={values.billing_email} disabled={!form?.can_edit} onChange={(event) => setField("billing_email", event.target.value)} placeholder="email@exemplo.com" className={fieldInputClassName} />
+                  <input value={values.billing_email} disabled={!form?.can_edit} onChange={(event) => setField("billing_email", event.target.value)} placeholder={isPt ? "email@exemplo.com" : "email@example.com"} className={fieldInputClassName} />
                 </Field>
               </div>
 
@@ -404,10 +404,10 @@ export default function FinanceOnboardingForm({ taskId, onClose, onUpdate, embed
                   </select>
                 </Field>
                 <Field icon={<UserRound className="h-5 w-5" />} label={copy.main_contact_email} saving={savingField === "main_contact_email"} saved={savedField === "main_contact_email"}>
-                  <input value={values.main_contact_email} disabled={!form?.can_edit} onChange={(event) => setField("main_contact_email", event.target.value)} placeholder={isPt ? "Nome do gestor responsavel" : "Responsible manager"} className={fieldInputClassName} />
+                  <input value={values.main_contact_email} disabled={!form?.can_edit} onChange={(event) => setField("main_contact_email", event.target.value)} placeholder={isPt ? "Nome do gestor responsável" : "Responsible manager"} className={fieldInputClassName} />
                 </Field>
                 <Field icon={<UserRound className="h-5 w-5" />} label={copy.payment_terms} saving={savingField === "payment_terms"} saved={savedField === "payment_terms"}>
-                  <input value={values.payment_terms} disabled={!form?.can_edit} onChange={(event) => setField("payment_terms", event.target.value)} placeholder={isPt ? "Nome do comercial responsavel" : "Commercial owner"} className={fieldInputClassName} />
+                  <input value={values.payment_terms} disabled={!form?.can_edit} onChange={(event) => setField("payment_terms", event.target.value)} placeholder={isPt ? "Nome do comercial responsável" : "Commercial owner"} className={fieldInputClassName} />
                 </Field>
                 <Field icon={<CalendarDays className="h-5 w-5" />} label={copy.contract_start_date} saving={savingField === "contract_start_date"} saved={savedField === "contract_start_date"}>
                   <input type="datetime-local" value={values.contract_start_date} disabled={!form?.can_edit} onChange={(event) => setField("contract_start_date", event.target.value)} className={fieldInputClassName} />
@@ -434,7 +434,7 @@ export default function FinanceOnboardingForm({ taskId, onClose, onUpdate, embed
                   {(form?.onboarding.contracts ?? []).map((contract) => (
                     <div key={contract.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground dark:border-white/10 dark:bg-[#071024]">
                       <span className="min-w-0 truncate">{contract.file_name}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">{formatDate(contract.created_at)}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{formatDate(contract.created_at, language)}</span>
                     </div>
                   ))}
                   {(form?.onboarding.contracts ?? []).length === 0 && (

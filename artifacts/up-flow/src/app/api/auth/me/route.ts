@@ -5,13 +5,18 @@ import { isSuperAdmin } from "@/lib/auth-helpers";
 import { requireAuth } from "@/lib/auth-response";
 import { logError } from "@/lib/log-error";
 import { prisma } from "@/lib/prisma";
-import { isPhoneLikeName, normalizeDisplayName, normalizePhone } from "@/lib/user-profile";
+import {
+  formatBrazilianMobilePhone,
+  formatPersonName,
+  isPhoneLikeName,
+  isValidBrazilianMobilePhone,
+} from "@/lib/user-profile";
 import { withErrorReporting } from "@/lib/with-error-reporting";
 
 const UpdateProfileSchema = z.object({
-  name: z.string().trim().min(1).max(120).optional(),
-  email: z.string().trim().email().max(320).optional(),
-  phone: z.string().trim().max(40).nullable().optional(),
+  name: z.string().trim().min(1, "Name is required").max(120),
+  email: z.string().trim().email("A valid email is required").max(320),
+  phone: z.string().trim().min(1, "Phone is required").max(40),
 });
 
 async function GET_handler() {
@@ -42,18 +47,27 @@ async function PATCH_handler(req: NextRequest) {
   const parsed = UpdateProfileSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Invalid profile update", issues: parsed.error.flatten() },
+      {
+        error: parsed.error.issues[0]?.message ?? "Invalid profile update",
+        issues: parsed.error.flatten(),
+      },
       { status: 400 },
     );
   }
 
-  if (parsed.data.name !== undefined && isPhoneLikeName(parsed.data.name)) {
+  if (isPhoneLikeName(parsed.data.name)) {
     return NextResponse.json({ error: "Name cannot be a phone number" }, { status: 400 });
   }
 
-  const email = (parsed.data.email ?? u.email).trim().toLowerCase();
-  const phone = parsed.data.phone === undefined ? u.phone ?? null : normalizePhone(parsed.data.phone);
-  const name = normalizeDisplayName(parsed.data.name ?? u.name, email, phone);
+  const email = parsed.data.email.trim().toLowerCase();
+  const phone = formatBrazilianMobilePhone(parsed.data.phone);
+  if (!isValidBrazilianMobilePhone(phone)) {
+    return NextResponse.json(
+      { error: "Phone must follow the format (XX) XXXXX-XXXX" },
+      { status: 400 },
+    );
+  }
+  const name = formatPersonName(parsed.data.name.trim());
   const emailChanged = email !== u.email.toLowerCase();
 
   if (emailChanged) {

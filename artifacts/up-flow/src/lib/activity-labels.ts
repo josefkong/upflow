@@ -19,3 +19,13 @@ export function activityEventLabel(type: string, t: Translate) {
 export function activityEntityLabel(entityType: string, t: Translate) {
   return localizedIdentifier("activity.entity", entityType, t);
 }
+
+export function formatActivityDateTime(value: string | Date, language: string) {
+  const locale = language === "pt-BR" ? "pt-BR" : "en-US";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+}

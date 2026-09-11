@@ -4,6 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-response";
 import { buildPage, parsePagination } from "@/lib/pagination";
 import { withErrorReporting } from "@/lib/with-error-reporting";
+import {
+  canViewClientFinancials,
+  redactFinancialMetadata,
+} from "@/lib/client-financial-access";
 
 async function GET_handler(req: NextRequest) {
   const _r = await requireAuth();
@@ -73,8 +77,20 @@ async function GET_handler(req: NextRequest) {
       company: { select: { id: true, name: true } },
     },
   });
+  const financialsVisible = await canViewClientFinancials(
+    auth,
+    auth.currentWorkspaceId,
+  );
 
-  return NextResponse.json(buildPage(items, limit));
+  return NextResponse.json(
+    buildPage(
+      items.map((item) => ({
+        ...item,
+        metadata: redactFinancialMetadata(item.metadata, financialsVisible),
+      })),
+      limit,
+    ),
+  );
 }
 
 export const GET = withErrorReporting("api:activity:GET", GET_handler);

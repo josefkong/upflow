@@ -41,7 +41,7 @@ test("active workspace members can read and contribute while guests stay view-on
   assert.match(tasksRoute, /canContributeToProject\(auth,\s*project\)/);
   assert.match(taskRoute, /canReadProject\(auth,\s*task\.project\)/);
   assert.match(taskRoute, /canContributeToProject\(auth,\s*oldTask\.project\)/);
-  assert.match(sidebarRoute, /readableProjectWhere\(auth,\s*auth\.currentWorkspaceId\)/);
+  assert.match(sidebarRoute, /readableProjectsWhere = readableProjectWhere\(\s*auth,\s*auth\.currentWorkspaceId/s);
   assert.match(searchRoute, /readableProjectWhere\(auth,\s*workspaceId\)/);
   assert.match(searchRoute, /const taskScope = \{\s*project:\s*projectScope\s*\}/);
   assert.match(searchRoute, /const docScope = \{\s*workspace_id:\s*workspaceId,\s*project:\s*projectScope\s*\}/);

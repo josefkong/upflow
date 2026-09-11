@@ -98,6 +98,8 @@ test("calendar attendee assignments create notifications and navigate to calenda
   assert.match(updateRoute, /newlyAddedAttendees/);
   assert.match(helper, /source:\s*"calendar_event_assigned"/);
   assert.match(helper, /type:\s*"assigned"/);
+  assert.match(helper, /data:\s*\{ path: \["calendar_event_id"\], equals: event\.id \}/);
+  assert.match(helper, /const newTargets = targets\.filter/);
   assert.match(helper, /broadcastNotification\(userId\)/);
   assert.match(notificationLinks, /source === "calendar_event_assigned"/);
   assert.match(notificationLinks, /\/calendar\?\$\{params\.toString\(\)\}/);

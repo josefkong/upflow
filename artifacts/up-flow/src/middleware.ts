@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 import { isTestLoginEnabled, TEST_AUTH_COOKIE } from "@/lib/test-auth";
+import { hasGoogleIdentityProvider } from "@/lib/google-auth";
 
 function signInRedirect(req: NextRequest) {
   const nextPath = `${req.nextUrl.pathname}${req.nextUrl.search}`;
@@ -34,6 +35,7 @@ export async function middleware(req: NextRequest) {
   // link and sign up before joining).
   const isPublicAuthPage =
     isLoginPage ||
+    pathname === "/auth/callback" ||
     pathname === "/auth/forgot" ||
     isPasswordRecoveryPage ||
     pathname.startsWith("/invite/");
@@ -54,7 +56,7 @@ export async function middleware(req: NextRequest) {
     isTestLoginEnabled() &&
     Boolean(rawTestCookie) &&
     /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(rawTestCookie!);
-  let user: { email?: string | null } | null = testCookieShapeOk
+  let user: { email?: string | null; app_metadata?: unknown } | null = testCookieShapeOk
     ? { email: "pending-server-verify" }
     : null;
 
@@ -86,7 +88,10 @@ export async function middleware(req: NextRequest) {
         );
 
         const got = await supabase.auth.getUser();
-        user = got.data.user;
+        user =
+          got.data.user && hasGoogleIdentityProvider(got.data.user.app_metadata)
+            ? got.data.user
+            : null;
       } catch {
         user = null;
       }

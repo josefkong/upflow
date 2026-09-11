@@ -2,23 +2,54 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isWorkspaceAdminFor, type AuthUser } from "@/lib/auth-helpers";
 
-export const EVENT_ATTACHMENT_BUCKET = process.env.TASK_ASSETS_BUCKET || "task-assets";
+export const EVENT_ATTACHMENT_BUCKET =
+  process.env.TASK_ASSETS_BUCKET || "task-assets";
 
 export const calendarEventDetailInclude = {
   creator: { select: { id: true, name: true, email: true, avatar_url: true } },
   project: { select: { id: true, name: true } },
-  task: { select: { id: true, title: true } },
+  task: {
+    select: {
+      id: true,
+      title: true,
+      assignee: { select: { id: true, name: true, email: true } },
+      followers: {
+        select: { user: { select: { id: true, name: true, email: true } } },
+        orderBy: { created_at: "asc" },
+      },
+    },
+  },
   company: { select: { id: true, name: true } },
   space: { select: { id: true, name: true, icon: true } },
-  responsible: { select: { id: true, name: true, email: true, avatar_url: true } },
+  responsible: {
+    select: { id: true, name: true, email: true, avatar_url: true },
+  },
   cancelled_by_user: { select: { id: true, name: true, email: true } },
+  commercial_lead_presentation: {
+    select: {
+      id: true,
+      brand_name: true,
+      owner_name: true,
+      owner_email: true,
+      instagram: true,
+      monthly_revenue: true,
+      whatsapp: true,
+      company_type: true,
+      observations: true,
+      assignee: { select: { id: true, name: true, email: true } },
+    },
+  },
   attendees: {
-    include: { user: { select: { id: true, name: true, email: true, avatar_url: true } } },
+    include: {
+      user: { select: { id: true, name: true, email: true, avatar_url: true } },
+    },
     orderBy: { created_at: "asc" },
   },
   reminders: { orderBy: { minutes_before: "asc" } },
   attachments: {
-    include: { document: { select: { id: true, title: true, project_id: true } } },
+    include: {
+      document: { select: { id: true, title: true, project_id: true } },
+    },
     orderBy: { created_at: "asc" },
   },
 } as const satisfies Prisma.CalendarEventInclude;
@@ -47,6 +78,7 @@ export const calendarEventListSelect = {
   cancelled_by: true,
   location: true,
   meeting_url: true,
+  google_meet_requested: true,
   color: true,
   created_at: true,
   updated_at: true,
@@ -72,7 +104,11 @@ export function serializeCalendarEventAttachment(
   attachment: CalendarEventAttachmentDetail,
   eventId: string,
 ) {
-  const { storage_bucket: _storageBucket, storage_path: _storagePath, ...safeAttachment } = attachment;
+  const {
+    storage_bucket: _storageBucket,
+    storage_path: _storagePath,
+    ...safeAttachment
+  } = attachment;
   return {
     ...safeAttachment,
     download_url:
@@ -140,7 +176,10 @@ export async function validateCalendarEventRelations(input: {
       : null,
     input.taskId
       ? prisma.task.findFirst({
-          where: { id: input.taskId, project: { workspace_id: input.workspaceId } },
+          where: {
+            id: input.taskId,
+            project: { workspace_id: input.workspaceId },
+          },
           select: { id: true, project_id: true, assignee_id: true },
         })
       : null,
@@ -158,16 +197,26 @@ export async function validateCalendarEventRelations(input: {
       : null,
   ]);
 
-  if (input.projectId && !project) return { ok: false as const, error: "Project not found" };
-  if (input.taskId && !task) return { ok: false as const, error: "Task not found" };
-  if (input.companyId && !company) return { ok: false as const, error: "Client not found" };
-  if (input.spaceId && !space) return { ok: false as const, error: "Space not found" };
+  if (input.projectId && !project)
+    return { ok: false as const, error: "Project not found" };
+  if (input.taskId && !task)
+    return { ok: false as const, error: "Task not found" };
+  if (input.companyId && !company)
+    return { ok: false as const, error: "Client not found" };
+  if (input.spaceId && !space)
+    return { ok: false as const, error: "Space not found" };
   if (task && input.projectId && task.project_id !== input.projectId) {
-    return { ok: false as const, error: "Task does not belong to the selected project" };
+    return {
+      ok: false as const,
+      error: "Task does not belong to the selected project",
+    };
   }
 
   const people = Array.from(
-    new Set([...input.attendeeIds, ...(input.responsibleUserId ? [input.responsibleUserId] : [])]),
+    new Set([
+      ...input.attendeeIds,
+      ...(input.responsibleUserId ? [input.responsibleUserId] : []),
+    ]),
   );
   if (people.length > 0) {
     const members = await prisma.workspaceMember.findMany({
@@ -182,7 +231,8 @@ export async function validateCalendarEventRelations(input: {
     if (members.length !== people.length) {
       return {
         ok: false as const,
-        error: "Attendees and the responsible person must be active non-guest workspace members",
+        error:
+          "Attendees and the responsible person must be active non-guest workspace members",
       };
     }
   }
@@ -205,7 +255,8 @@ export function isCalendarEventStoragePath(
   path: string | null | undefined,
 ) {
   if (!path) return false;
-  const [pathWorkspaceId, collection, pathEventId, filename, ...extra] = path.split("/");
+  const [pathWorkspaceId, collection, pathEventId, filename, ...extra] =
+    path.split("/");
   return (
     pathWorkspaceId === workspaceId &&
     collection === "calendar-events" &&

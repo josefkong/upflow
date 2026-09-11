@@ -71,8 +71,9 @@ test("streamlined client onboarding uses a client-first wizard and stable depart
   assert.doesNotMatch(updateRoute, /include: onboardingInclude/);
 
   assert.match(helper, /projectName: "Contracts & Handoffs"/);
-  assert.match(helper, /projectName: "Client Onboarding"/);
-  assert.match(helper, /projectName: "Client Channels"/);
+  assert.match(helper, /projectName: "Onboarding"/);
+  assert.doesNotMatch(helper, /projectName: "Client Channels"/);
+  assert.match(helper, /support:\s*\{[\s\S]*?projectName: "Onboarding"/);
   assert.match(helper, /projectName: "Service Onboarding"/);
   assert.doesNotMatch(helper, /Onboarding - /);
   assert.match(helper, /const financeProjectId = await resolveFinanceOnboardingProjectId/);
@@ -100,7 +101,7 @@ test("streamlined client onboarding uses a client-first wizard and stable depart
   assert.match(reorderRoute, /dstColumn === "done"/);
   assert.match(taskSheet, /readTaskApiError/);
   assert.match(listView, /readTaskApiError/);
-  assert.match(kanbanBoard, /readTaskApiError/);
+  assert.match(kanbanBoard, /automaticMovementOnly/);
   assert.match(onboardingPanel, /onboardingWorkflow\.overrideAction/);
   assert.match(queuePage, /onboardingQueue\.view\.missingMapping/);
   assert.match(onboardingDetail, /ClientOnboardingPanel/);

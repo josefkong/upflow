@@ -89,6 +89,34 @@ export interface RenderedEmail {
   text: string;
 }
 
+export function commercialLeadPresentationEmail(opts: {
+  recipientName: string;
+  brandName: string;
+  startsAtLabel: string;
+  endsAtLabel: string;
+  meetingUrl?: string | null;
+}): RenderedEmail {
+  const subject = `Apresentação agendada — ${opts.brandName}`;
+  const meetingAction = opts.meetingUrl
+    ? button(opts.meetingUrl, "Entrar no Google Meet")
+    : `<p style="margin:16px 0 0;color:${BRAND.muted};font-size:13px;">O evento foi adicionado ao calendário. O link do Google Meet ficará disponível após a sincronização da agenda do responsável.</p>`;
+  const body = `
+    <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:${BRAND.text};">Apresentação agendada</h1>
+    <p style="margin:0 0 12px;color:${BRAND.text};">Olá, <strong>${escapeHtml(opts.recipientName)}</strong>.</p>
+    <p style="margin:0 0 12px;color:${BRAND.text};">A apresentação da marca <strong>${escapeHtml(opts.brandName)}</strong> foi agendada.</p>
+    <p style="margin:0;color:${BRAND.muted};">Início: ${escapeHtml(opts.startsAtLabel)}<br />Término: ${escapeHtml(opts.endsAtLabel)}</p>
+    ${meetingAction}
+  `;
+  const text = [
+    `Apresentação agendada — ${opts.brandName}`,
+    `Olá, ${opts.recipientName}.`,
+    `Início: ${opts.startsAtLabel}`,
+    `Término: ${opts.endsAtLabel}`,
+    opts.meetingUrl ? `Google Meet: ${opts.meetingUrl}` : "O link do Google Meet ficará disponível após a sincronização da agenda.",
+  ].join("\n");
+  return { subject, html: shell({ preheader: subject, bodyHtml: body }), text };
+}
+
 function workspaceRoleArticle(role: "admin" | "member" | "guest"): string {
   return role === "admin" ? "an admin" : `a ${role}`;
 }

@@ -9,20 +9,16 @@ function read(relativePath: string) {
   return readFileSync(join(ROOT, relativePath), "utf8");
 }
 
-test("active non-guest members can create projects and receive project contribution capability", () => {
+test("only administrators can create projects while members keep task contribution capability", () => {
   const projectsRoute = read("src/app/api/projects/route.ts");
   const projectRoute = read("src/app/api/projects/[id]/route.ts");
   const projectPage = read("src/app/(dashboard)/projects/[id]/page.tsx");
 
-  assert.match(projectsRoute, /async function canCreateProjectInWorkspace/);
   assert.match(
     projectsRoute,
-    /return Boolean\(member\?\.status === "active" && member\.role !== "guest"\);/,
+    /if \(!isWorkspaceAdminFor\(auth, auth\.currentWorkspaceId\)\) \{\s*return NextResponse\.json\(\{ error: "Forbidden" \}, \{ status: 403 \}\);/s,
   );
-  assert.match(
-    projectsRoute,
-    /canCreateProjectInWorkspace\(auth\.prismaUser\.id, auth\.currentWorkspaceId, isAdmin\)/,
-  );
+  assert.doesNotMatch(projectsRoute, /canCreateProjectInWorkspace/);
 
   assert.match(
     projectRoute,
@@ -57,7 +53,7 @@ test("task creation stops before submission when project contribution capability
   );
 });
 
-test("space structure controls stay admin-only while active members can create work", () => {
+test("space structure and project creation stay admin-only while active members can create tasks and meetings", () => {
   const spacePage = read("src/app/(dashboard)/spaces/[id]/page.tsx");
   const spaceBrowser = read("src/components/spaces/space-browser.tsx");
 
@@ -79,7 +75,7 @@ test("space structure controls stay admin-only while active members can create w
 
   assert.match(
     spacePage,
-    /const canCreateWorkspaceWork = Boolean\([\s\S]*?currentRole === "member"[\s\S]*?\);/,
+    /const hasWritableWorkspaceRole = Boolean\([\s\S]*?currentRole === "member"[\s\S]*?\);[\s\S]*?const canCreateWorkspaceWork = Boolean\(/,
   );
   assert.match(
     spacePage,
@@ -87,13 +83,10 @@ test("space structure controls stay admin-only while active members can create w
   );
   assert.match(
     spacePage,
-    /onCreateMeeting=\{canCreateWorkspaceWork \? openMeetingCreate : undefined\}/,
+    /onCreateMeeting=\{\s*canCreateWorkspaceWork \? openMeetingCreate : undefined\s*\}/,
   );
-  assert.match(
-    spacePage,
-    /onCreateProject=\{canCreateWorkspaceWork \? \(\) => setShowNewProject\(true\) : undefined\}/,
-  );
-  assert.match(spacePage, /<NewProjectDialog\s+open=\{canCreateWorkspaceWork && showNewProject\}/s);
+  assert.match(spacePage, /onCreateProject=\{[\s\S]*?canManageWorkspace/);
+  assert.match(spacePage, /<NewProjectDialog\s+open=\{canManageWorkspace && showNewProject\}/s);
 });
 
 test("read-only project users stay in view mode and cannot mutate the social calendar", () => {
@@ -111,5 +104,8 @@ test("read-only project users stay in view mode and cannot mutate the social cal
   assert.match(socialCalendar, /canContribute: boolean;/);
   assert.match(socialCalendar, /if \(!canContribute\) return;/);
   assert.match(socialCalendar, /disabled=\{!canContribute \|\| !moodboardReady/);
-  assert.match(socialCalendar, /\{canContribute && \(\s*<button[\s\S]*?New content plan/s);
+  assert.match(
+    socialCalendar,
+    /\{canContribute && \(\s*<CreateActionButton[\s\S]*?socialCalendar\.newPlan/s,
+  );
 });

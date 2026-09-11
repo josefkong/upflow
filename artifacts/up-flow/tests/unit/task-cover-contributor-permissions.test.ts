@@ -26,8 +26,7 @@ test("task cover uploads authorize project contributors against a trusted projec
   assert.match(control, /form\.append\("project_id", projectId\)/);
   assert.match(control, /form\.append\("task_id", taskId\)/);
   assert.doesNotMatch(control, /hasWorkspaceAdminAccess/);
-  assert.match(detail, /projectId=\{currentTask\.project_id\}/);
-  assert.match(detail, /taskId=\{currentTask\.id\}/);
-  assert.match(create, /projectId=\{selectedProjectId \|\| undefined\}/);
+  assert.doesNotMatch(detail, /TaskCoverImageControl/);
+  assert.doesNotMatch(create, /TaskCoverImageControl/);
   assert.match(create, /contributorAccessDenied/);
 });

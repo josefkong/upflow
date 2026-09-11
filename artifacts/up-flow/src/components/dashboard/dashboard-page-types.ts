@@ -1,4 +1,12 @@
-import type { ActivityEvent, CalendarEvent, Company, Project, Task, TeamMember, TimeEntry } from "@/lib/types";
+import type {
+  ActivityEvent,
+  CalendarEvent,
+  Company,
+  Project,
+  Task,
+  TeamMember,
+  TimeEntry,
+} from "@/lib/types";
 
 export type ActionFilter = "all" | "completed" | "in_progress";
 export type TaskDrawerStatus = "todo" | "in_progress" | "done";
@@ -19,6 +27,7 @@ export type CommandDrawer =
   | "quick_create";
 
 export interface CommandCenterPayload {
+  financials_visible?: boolean;
   urgent_actions: { items: Task[]; count: number };
   team_workload: {
     items: Array<{
@@ -46,7 +55,15 @@ export interface CommandCenterPayload {
   };
   client_risk: {
     items: Array<{
-      company: Pick<Company, "id" | "name" | "commercial_status" | "status" | "contract_value" | "commission">;
+      company: Pick<
+        Company,
+        | "id"
+        | "name"
+        | "commercial_status"
+        | "status"
+        | "contract_value"
+        | "commission"
+      >;
       reasons: string[];
       open_tasks: number;
       overdue_tasks: number;
@@ -61,10 +78,24 @@ export interface CommandCenterPayload {
       not_enough_data: number;
     };
     items: Array<{
-      company: Pick<Company, "id" | "name" | "commercial_status" | "status" | "contract_value" | "commission" | "plan_name" | "service_type"> & {
+      company: Pick<
+        Company,
+        | "id"
+        | "name"
+        | "commercial_status"
+        | "status"
+        | "contract_value"
+        | "commission"
+        | "plan_name"
+        | "service_type"
+      > & {
         owner?: { id: string; name: string; email: string } | null;
       };
-      health_status: "healthy" | "attention_needed" | "at_risk" | "not_enough_data";
+      health_status:
+        | "healthy"
+        | "attention_needed"
+        | "at_risk"
+        | "not_enough_data";
       reasons: string[];
       open_tasks: number;
       overdue_tasks: number;
@@ -122,6 +153,11 @@ export interface CommandCenterPayload {
       label: string;
       count: number;
       trace: string;
+      trace_values?: {
+        member_name?: string;
+        member_open_tasks?: number;
+        total_open_tasks?: number;
+      };
     }>;
   };
   revenue_snapshot: {
@@ -129,7 +165,9 @@ export interface CommandCenterPayload {
     total_contract_value: number;
     total_commission: number;
     clients_without_contract_value: number;
-    top_clients: Array<Pick<Company, "id" | "name" | "contract_value" | "commission">>;
+    top_clients: Array<
+      Pick<Company, "id" | "name" | "contract_value" | "commission">
+    >;
   };
   quick_create: { items: string[] };
   workspace_setup?: {

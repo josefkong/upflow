@@ -1,7 +1,7 @@
 "use client";
 
 import Header from "@/components/layout/header";
-import ProjectDirectory from "@/components/projects/project-directory";
+import PersonalWorkspaceBoard from "@/components/projects/personal-workspace-board";
 import { useLanguage } from "@/components/language-provider";
 
 export default function ProjectsPage() {
@@ -9,7 +9,7 @@ export default function ProjectsPage() {
   return (
     <>
       <Header title={t("projects.title")} />
-      <ProjectDirectory />
+      <PersonalWorkspaceBoard />
     </>
   );
 }

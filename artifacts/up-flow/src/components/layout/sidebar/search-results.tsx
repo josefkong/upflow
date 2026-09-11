@@ -7,6 +7,10 @@ import type {
   SidebarSearchResultType,
 } from "@/lib/sidebar-discovery";
 import { useLanguage } from "@/components/language-provider";
+import {
+  localizeProjectName,
+  localizeSpaceName,
+} from "@/lib/i18n/project-name-translations";
 import { cn } from "@/lib/utils";
 
 function ResultIcon({ type }: { type: SidebarSearchResultType }) {
@@ -24,12 +28,30 @@ export function SidebarSearchResults({
   pathname: string;
   onNavigate?: () => void;
 }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   return (
-    <div className="space-y-1" role="list" aria-label={t("sidebar.searchResults")}>
+    <div
+      className="space-y-1"
+      role="list"
+      aria-label={t("sidebar.searchResults")}
+    >
       {results.map((result) => {
         const active = pathname === result.href;
-        const breadcrumb = result.breadcrumb.join(" › ");
+        const displayName =
+          result.type === "project"
+            ? localizeProjectName(result.name, language)
+            : result.type === "space"
+              ? localizeSpaceName(result.name, language)
+              : result.name;
+        const breadcrumb = result.breadcrumb
+          .map((segment, index) => {
+            if (index === 0) return localizeSpaceName(segment, language);
+            return result.type === "project" &&
+              index === result.breadcrumb.length - 1
+              ? localizeProjectName(segment, language)
+              : segment;
+          })
+          .join(" › ");
 
         return (
           <Link
@@ -55,7 +77,9 @@ export function SidebarSearchResults({
               <ResultIcon type={result.type} />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-xs font-semibold">{result.name}</span>
+              <span className="block truncate text-xs font-semibold">
+                {displayName}
+              </span>
               <span className="mt-0.5 block truncate text-[10px] leading-4 text-muted-foreground">
                 {breadcrumb}
               </span>

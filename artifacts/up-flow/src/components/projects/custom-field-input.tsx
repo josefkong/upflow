@@ -128,7 +128,7 @@ export default function CustomFieldInput({
               </option>
             ))}
           </select>
-          <ChevronDown className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <ChevronDown className="upflow-select-chevron pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         </div>
       </FieldWrap>
     );

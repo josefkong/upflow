@@ -18,13 +18,20 @@ import {
 } from "lucide-react";
 import Header from "@/components/layout/header";
 import ScheduleMeetingDialog from "@/components/dashboard/schedule-meeting-dialog";
+import { CreateActionButton } from "@/components/ui/create-action-button";
 import { useLanguage } from "@/components/language-provider";
 import { useAppUser } from "@/components/user-provider";
 import { appDateKey, cn, formatLongDate, formatTime, mergeAppDateAndTime } from "@/lib/utils";
 import { logError } from "@/lib/log-error";
 import type { CalendarEvent } from "@/lib/types";
+import {
+  MEETING_ROOM_OPTIONS,
+  isMeetingRoomEvent,
+  meetingRoomKeyFromLocation,
+  meetingRoomNameFromLocation,
+  type MeetingRoomKey,
+} from "@/lib/meeting-rooms";
 
-const ROOM_NAME = "Sala de Reuniao";
 const DEFAULT_SLOT_MINUTES = 30;
 const DAY_CELL_VISIBLE_ITEM_LIMIT = 8;
 const WEEKDAY_KEYS = [
@@ -58,21 +65,6 @@ function startOfMonthGrid(year: number, month: number) {
   return new Date(year, month, 1 - offset);
 }
 
-function normalizeRoom(value: string | null | undefined) {
-  return (value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
-function isMeetingRoomEvent(event: RoomCalendarEvent) {
-  const location = normalizeRoom(event.location);
-  return (
-    event.type === "meeting" &&
-    (location.includes("sala de reuniao") || location.includes("meeting room"))
-  );
-}
-
 function eventEnd(event: RoomCalendarEvent) {
   const start = new Date(event.starts_at);
   if (event.ends_at) return new Date(event.ends_at);
@@ -92,6 +84,9 @@ function conflictIds(events: RoomCalendarEvent[]) {
   for (let i = 0; i < events.length; i += 1) {
     for (let j = i + 1; j < events.length; j += 1) {
       if (dateKey(events[i].starts_at) !== dateKey(events[j].starts_at)) continue;
+      const firstRoom = meetingRoomKeyFromLocation(events[i].location) ?? "legacy";
+      const secondRoom = meetingRoomKeyFromLocation(events[j].location) ?? "legacy";
+      if (firstRoom !== secondRoom) continue;
       if (!hasOverlap(events[i], events[j])) continue;
       ids.add(events[i].id);
       ids.add(events[j].id);
@@ -100,8 +95,8 @@ function conflictIds(events: RoomCalendarEvent[]) {
   return ids;
 }
 
-function personName(person?: { name: string | null; email: string } | null) {
-  return person?.name || person?.email || "Team";
+function personName(person: { name: string | null; email: string } | null | undefined, fallback: string) {
+  return person?.name || person?.email || fallback;
 }
 
 function initials(name: string) {
@@ -113,10 +108,10 @@ function initials(name: string) {
     .slice(0, 2);
 }
 
-function eventPeople(event: RoomCalendarEvent) {
+function eventPeople(event: RoomCalendarEvent, fallback: string) {
   const names = [
-    personName(event.creator),
-    ...(event.attendees ?? []).map((attendee) => personName(attendee.user)),
+    personName(event.creator, fallback),
+    ...(event.attendees ?? []).map((attendee) => personName(attendee.user, fallback)),
   ];
   return Array.from(new Set(names.filter(Boolean)));
 }
@@ -130,8 +125,8 @@ function eventUserIds(event: RoomCalendarEvent) {
   );
 }
 
-function eventRange(event: RoomCalendarEvent) {
-  return `${formatTime(event.starts_at)} - ${formatTime(eventEnd(event))}`;
+function eventRange(event: RoomCalendarEvent, language: "en" | "pt-BR") {
+  return `${formatTime(event.starts_at, language)} - ${formatTime(eventEnd(event), language)}`;
 }
 
 export default function MeetingRoomPage() {
@@ -145,7 +140,9 @@ export default function MeetingRoomPage() {
   const [people, setPeople] = useState<SelectableUser[]>([]);
   const [peopleLoading, setPeopleLoading] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState("");
+  const [selectedRoomKey, setSelectedRoomKey] = useState<MeetingRoomKey | "legacy" | "">("");
   const [showSchedule, setShowSchedule] = useState(false);
+  const [scheduleRoomKey, setScheduleRoomKey] = useState<MeetingRoomKey>("b2b");
 
   useEffect(() => {
     const interval = window.setInterval(() => setToday(new Date()), 60_000);
@@ -220,9 +217,17 @@ export default function MeetingRoomPage() {
   }, [gridStart]);
 
   const filteredEvents = useMemo(() => {
-    if (!selectedUserId) return events;
-    return events.filter((event) => eventUserIds(event).includes(selectedUserId));
-  }, [events, selectedUserId]);
+    return events.filter((event) => {
+      if (selectedUserId && !eventUserIds(event).includes(selectedUserId)) {
+        return false;
+      }
+      if (!selectedRoomKey) return true;
+      const roomKey = meetingRoomKeyFromLocation(event.location);
+      return selectedRoomKey === "legacy"
+        ? roomKey === null
+        : roomKey === selectedRoomKey;
+    });
+  }, [events, selectedRoomKey, selectedUserId]);
 
   const eventsByDay = useMemo(() => {
     const map = new Map<string, RoomCalendarEvent[]>();
@@ -243,10 +248,38 @@ export default function MeetingRoomPage() {
     [filteredEvents, today],
   );
   const nextEvent = upcomingEvents[0] ?? null;
-  const monthTitle = new Intl.DateTimeFormat(language, {
+  const roomAvailability = useMemo(
+    () =>
+      MEETING_ROOM_OPTIONS.map((room) => {
+        const roomEvents = events
+          .filter(
+            (event) =>
+              meetingRoomKeyFromLocation(event.location) === room.key &&
+              event.status !== "cancelled",
+          )
+          .sort(
+            (a, b) =>
+              new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime(),
+          );
+        const active = roomEvents.find(
+          (event) =>
+            new Date(event.starts_at).getTime() <= today.getTime() &&
+            eventEnd(event).getTime() > today.getTime(),
+        );
+        const next = roomEvents.find(
+          (event) => new Date(event.starts_at).getTime() > today.getTime(),
+        );
+        return { room, active, next };
+      }),
+    [events, today],
+  );
+  const formattedMonthTitle = new Intl.DateTimeFormat(language, {
     month: "long",
     year: "numeric",
   }).format(cursor);
+  const monthTitle = formattedMonthTitle
+    ? `${formattedMonthTitle.charAt(0).toLocaleUpperCase(language)}${formattedMonthTitle.slice(1)}`
+    : formattedMonthTitle;
   const selectedPerson = useMemo(
     () => people.find((person) => person.id === selectedUserId) ?? null,
     [people, selectedUserId],
@@ -267,6 +300,11 @@ export default function MeetingRoomPage() {
     setToday(now);
     setCursor(new Date(now.getFullYear(), now.getMonth(), 1));
     setSelected(now);
+  };
+
+  const openSchedule = (roomKey?: MeetingRoomKey) => {
+    if (roomKey) setScheduleRoomKey(roomKey);
+    setShowSchedule(true);
   };
 
   const handleScheduled = (event: CalendarEvent) => {
@@ -326,14 +364,108 @@ export default function MeetingRoomPage() {
                 <RefreshCw className="h-4 w-4" />
                 {t("common.refresh")}
               </button>
-              <button
-                type="button"
-                onClick={() => setShowSchedule(true)}
-                className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
+              <CreateActionButton
+                onClick={() => openSchedule()}
               >
                 <Plus className="h-4 w-4" />
                 {t("meetingRoom.reserveRoom")}
-              </button>
+              </CreateActionButton>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <div className="mb-3 flex items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-foreground">
+                  {t("meetingRoom.roomsNow")}
+                </p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  {t("meetingRoom.roomsNowHint")}
+                </p>
+              </div>
+              <span className="text-[11px] text-muted-foreground">
+                {formatTime(today, language)}
+              </span>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {roomAvailability.map(({ room, active, next }) => (
+                <div
+                  key={room.key}
+                  className={cn(
+                    "rounded-2xl border p-4",
+                    room.key === "b2b"
+                      ? "border-cyan-400/25 bg-cyan-400/[0.07]"
+                      : "border-violet-400/25 bg-violet-400/[0.07]",
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div
+                        className={cn(
+                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+                          room.key === "b2b"
+                            ? "bg-cyan-400/15 text-cyan-300"
+                            : "bg-violet-400/15 text-violet-300",
+                        )}
+                      >
+                        <DoorOpen className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <h2 className="text-sm font-semibold text-foreground">
+                          {room.name}
+                        </h2>
+                        <p
+                          className={cn(
+                            "mt-0.5 text-xs font-semibold",
+                            active ? "text-upflow-warning" : "text-upflow-success",
+                          )}
+                        >
+                          {active
+                            ? t("meetingRoom.inUseUntil", {
+                                time: formatTime(eventEnd(active), language),
+                              })
+                            : t("meetingRoom.availableNow")}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openSchedule(room.key)}
+                      className="shrink-0 rounded-lg border border-border bg-background px-2.5 py-1.5 text-[11px] font-semibold text-foreground transition hover:bg-accent dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                    >
+                      {t("meetingRoom.book")}
+                    </button>
+                  </div>
+                  <div className="mt-3 border-t border-border/70 pt-3 text-xs dark:border-white/10">
+                    {active ? (
+                      <div className="min-w-0">
+                        <p className="truncate text-foreground">{active.title}</p>
+                        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                          {t("meetingRoom.reservedBy", {
+                            name: personName(active.creator, t("nav.team")),
+                          })}
+                        </p>
+                      </div>
+                    ) : next ? (
+                      <div className="min-w-0">
+                        <p className="truncate text-muted-foreground">
+                          {t("meetingRoom.nextRoomBooking", {
+                            date: formatLongDate(next.starts_at, language),
+                            time: formatTime(next.starts_at, language),
+                          })}
+                        </p>
+                        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                          {next.title} · {personName(next.creator, t("nav.team"))}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground">
+                        {t("meetingRoom.noUpcomingForRoom")}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -347,7 +479,7 @@ export default function MeetingRoomPage() {
             <MetricCard
               icon={Clock3}
               label={t("meetingRoom.nextBooking")}
-              value={nextEvent ? formatTime(nextEvent.starts_at) : t("common.none")}
+              value={nextEvent ? formatTime(nextEvent.starts_at, language) : t("common.none")}
               detail={nextEvent ? nextEvent.title : t("meetingRoom.noUpcomingBookings")}
             />
             <MetricCard
@@ -414,39 +546,63 @@ export default function MeetingRoomPage() {
                       : t("meetingRoom.userFilterAll")}
                   </p>
                 </div>
-                <label className="relative min-w-[220px]">
-                  <span className="sr-only">{t("meetingRoom.userFilter")}</span>
-                  <select
-                    value={selectedUserId}
-                    onChange={(event) => setSelectedUserId(event.target.value)}
-                    disabled={peopleLoading}
-                    className="h-10 w-full rounded-xl border border-border bg-background px-3 pr-9 text-xs font-medium text-foreground outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 disabled:opacity-50 dark:border-white/10 dark:bg-[#080d1b]"
-                  >
-                    <option value="">
-                      {peopleLoading ? t("common.loading") : t("meetingRoom.allUsers")}
-                    </option>
-                    {people.map((person) => (
-                      <option key={person.id} value={person.id}>
-                        {person.name || person.email}
+                <div className="grid w-full gap-2 sm:w-auto sm:grid-cols-2">
+                  <label className="relative min-w-[190px]">
+                    <span className="sr-only">{t("meetingRoom.roomFilter")}</span>
+                    <select
+                      value={selectedRoomKey}
+                      onChange={(event) =>
+                        setSelectedRoomKey(
+                          event.target.value as MeetingRoomKey | "legacy" | "",
+                        )
+                      }
+                      className="h-10 w-full rounded-xl border border-border bg-background px-3 pr-9 text-xs font-medium text-foreground outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 dark:border-white/10 dark:bg-[#080d1b]"
+                    >
+                      <option value="">{t("meetingRoom.allRooms")}</option>
+                      {MEETING_ROOM_OPTIONS.map((room) => (
+                        <option key={room.key} value={room.key}>
+                          {room.name}
+                        </option>
+                      ))}
+                      <option value="legacy">{t("meetingRoom.unspecifiedRoom")}</option>
+                    </select>
+                  </label>
+                  <label className="relative min-w-[190px]">
+                    <span className="sr-only">{t("meetingRoom.userFilter")}</span>
+                    <select
+                      value={selectedUserId}
+                      onChange={(event) => setSelectedUserId(event.target.value)}
+                      disabled={peopleLoading}
+                      className="h-10 w-full rounded-xl border border-border bg-background px-3 pr-9 text-xs font-medium text-foreground outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 disabled:opacity-50 dark:border-white/10 dark:bg-[#080d1b]"
+                    >
+                      <option value="">
+                        {peopleLoading ? t("common.loading") : t("meetingRoom.allUsers")}
                       </option>
-                    ))}
-                  </select>
-                </label>
+                      {people.map((person) => (
+                        <option key={person.id} value={person.id}>
+                          {person.name || person.email}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
               </div>
               {!peopleLoading && people.length === 0 && (
                 <p className="mt-2 text-xs text-muted-foreground">{t("meetingRoom.noUsers")}</p>
               )}
             </div>
 
-            <div className="mb-1 grid grid-cols-7 gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-              {WEEKDAY_KEYS.map((dayKey) => (
-                <div key={dayKey} className="px-2 py-1 text-center">
-                  {t(dayKey)}
+            <div className="overflow-x-auto pb-1">
+              <div className="min-w-[780px]">
+                <div className="mb-1 grid grid-cols-7 gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {WEEKDAY_KEYS.map((dayKey) => (
+                    <div key={dayKey} className="px-2 py-1 text-center">
+                      {t(dayKey)}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
 
-            <div className="grid grid-cols-7 gap-1">
+                <div className="grid grid-cols-7 gap-1">
               {days.map((day) => {
                 const key = dateKey(day);
                 const dayEvents = eventsByDay.get(key) ?? [];
@@ -485,15 +641,22 @@ export default function MeetingRoomPage() {
                       {dayEvents.slice(0, DAY_CELL_VISIBLE_ITEM_LIMIT).map((event) => (
                         <span
                           key={event.id}
-                          title={`${formatTime(event.starts_at)} ${event.title}`}
+                          title={`${formatTime(event.starts_at, language)} ${event.title}`}
                           className={cn(
                             "flex min-h-[17px] items-center gap-1 rounded-md border-l-2 px-1.5 py-0.5 text-[9px] font-medium leading-none",
                             conflicts.has(event.id)
                               ? "border-l-upflow-warning bg-upflow-warning/[0.15] text-upflow-warning"
-                              : "border-l-primary bg-primary/[0.15] text-sky-700 dark:text-sky-100",
+                              : meetingRoomKeyFromLocation(event.location) === "b2c"
+                                ? "border-l-violet-400 bg-violet-400/[0.15] text-violet-700 dark:text-violet-100"
+                                : meetingRoomKeyFromLocation(event.location) === "b2b"
+                                  ? "border-l-cyan-400 bg-cyan-400/[0.15] text-cyan-700 dark:text-cyan-100"
+                                  : "border-l-primary bg-primary/[0.15] text-sky-700 dark:text-sky-100",
                           )}
                         >
-                          <span className="shrink-0 font-bold tabular-nums">{formatTime(event.starts_at)}</span>
+                          <span className="shrink-0 font-bold tabular-nums">{formatTime(event.starts_at, language)}</span>
+                          <span className="shrink-0 opacity-75">
+                            {meetingRoomKeyFromLocation(event.location)?.toUpperCase() ?? "?"}
+                          </span>
                           <span className="min-w-0 truncate">{event.title}</span>
                         </span>
                       ))}
@@ -506,6 +669,8 @@ export default function MeetingRoomPage() {
                   </button>
                 );
               })}
+                </div>
+              </div>
             </div>
           </section>
 
@@ -517,12 +682,12 @@ export default function MeetingRoomPage() {
                     {t("meetingRoom.selectedDay")}
                   </p>
                   <h2 className="mt-1 text-base font-semibold text-foreground">
-                    {formatLongDate(selected)}
+                    {formatLongDate(selected, language)}
                   </h2>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setShowSchedule(true)}
+                  onClick={() => openSchedule()}
                   className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
                 >
                   <Plus className="h-3.5 w-3.5" />
@@ -539,17 +704,47 @@ export default function MeetingRoomPage() {
                     <p className="mt-1 text-xs text-muted-foreground">{t("meetingRoom.noBookingsSelectedDay")}</p>
                   </div>
                 ) : (
-                  <ul className="space-y-2">
-                    {selectedEvents.map((event) => (
-                      <MeetingItem
-                        key={event.id}
-                        event={event}
-                        hasConflict={conflicts.has(event.id)}
-                        onDelete={handleDelete}
-                        t={t}
-                      />
-                    ))}
-                  </ul>
+                  <div className="space-y-4">
+                    {[
+                      ...MEETING_ROOM_OPTIONS.map((room) => ({
+                        key: room.key,
+                        label: room.name,
+                      })),
+                      { key: "legacy", label: t("meetingRoom.unspecifiedRoom") },
+                    ].map((room) => {
+                      const roomEvents = selectedEvents.filter((event) => {
+                        const eventRoom = meetingRoomKeyFromLocation(event.location);
+                        return room.key === "legacy"
+                          ? eventRoom === null
+                          : eventRoom === room.key;
+                      });
+                      if (roomEvents.length === 0) return null;
+                      return (
+                        <div key={room.key}>
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                              {room.label}
+                            </p>
+                            <span className="text-[10px] text-muted-foreground">
+                              {roomEvents.length}
+                            </span>
+                          </div>
+                          <ul className="space-y-2">
+                            {roomEvents.map((event) => (
+                              <MeetingItem
+                                key={event.id}
+                                event={event}
+                                hasConflict={conflicts.has(event.id)}
+                                onDelete={handleDelete}
+                                language={language}
+                                t={t}
+                              />
+                            ))}
+                          </ul>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             </section>
@@ -581,6 +776,7 @@ export default function MeetingRoomPage() {
                       compact
                       hasConflict={conflicts.has(event.id)}
                       onDelete={handleDelete}
+                      language={language}
                       t={t}
                     />
                   ))}
@@ -599,8 +795,8 @@ export default function MeetingRoomPage() {
         initialTime="09:00"
         title={t("meetingRoom.reserveRoom")}
         defaultType="meeting"
-        defaultLocation={ROOM_NAME}
         roomBooking
+        defaultMeetingRoomKey={scheduleRoomKey}
       />
     </>
   );
@@ -645,17 +841,23 @@ function MeetingItem({
   compact = false,
   hasConflict,
   onDelete,
+  language,
   t,
 }: {
   event: RoomCalendarEvent;
   compact?: boolean;
   hasConflict: boolean;
   onDelete: (event: RoomCalendarEvent) => void;
+  language: "en" | "pt-BR";
   t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
-  const people = eventPeople(event);
-  const primaryPerson = people[0] ?? "Team";
-  const detailDate = compact ? formatLongDate(event.starts_at) : null;
+  const people = eventPeople(event, t("nav.team"));
+  const primaryPerson = people[0] ?? t("nav.team");
+  const detailDate = compact ? formatLongDate(event.starts_at, language) : null;
+  const roomKey = meetingRoomKeyFromLocation(event.location);
+  const roomName = roomKey
+    ? meetingRoomNameFromLocation(event.location)
+    : t("meetingRoom.unspecifiedRoom");
   return (
     <li
       className={cn(
@@ -680,7 +882,7 @@ function MeetingItem({
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <Clock3 className="h-3.5 w-3.5" />
-              {eventRange(event)}
+              {eventRange(event, language)}
             </span>
             {detailDate && <span>{detailDate}</span>}
             <span className="inline-flex min-w-0 items-center gap-1">
@@ -692,9 +894,18 @@ function MeetingItem({
             <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">{event.description}</p>
           )}
           <div className="mt-3 flex items-center justify-between gap-2">
-            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-sky-700 dark:border-white/10 dark:bg-white/5 dark:text-sky-100">
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-semibold",
+                roomKey === "b2b"
+                  ? "border-cyan-400/25 bg-cyan-400/10 text-cyan-700 dark:text-cyan-100"
+                  : roomKey === "b2c"
+                    ? "border-violet-400/25 bg-violet-400/10 text-violet-700 dark:text-violet-100"
+                    : "border-border bg-background text-muted-foreground dark:border-white/10 dark:bg-white/5",
+              )}
+            >
               <Video className="h-3 w-3" />
-              {event.location || ROOM_NAME}
+              {roomName}
             </span>
             <div className="flex shrink-0 items-center gap-1">
               <button

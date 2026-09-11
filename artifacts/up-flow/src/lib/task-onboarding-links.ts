@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { TaskOnboardingAction, TaskOnboardingLink } from "@/lib/types";
 import { isFinanceCampaignStartedAutomationKey } from "@/lib/onboarding-routing";
+import { onboardingMeetingName } from "@/lib/onboarding-meeting-copy";
 
 type RawOnboardingChecklistLink = {
   id: string;
@@ -14,6 +15,16 @@ type RawOnboardingChecklistLink = {
     company_id: string;
     progress: number;
     company: { name: string };
+    meetings?: Array<{
+      id: string;
+      scheduled: boolean;
+      scheduled_at: Date | string | null;
+      checklist_item: {
+        title: string;
+        automation_key: string | null;
+        sort_order: number;
+      } | null;
+    }>;
   };
   marketing_b2b_form?: { id: string } | null;
   marketing_b2c_form?: { id: string } | null;
@@ -93,6 +104,27 @@ export function buildTaskOnboardingLink(link: RawOnboardingChecklistLink): TaskO
     progress: link.onboarding.progress,
     href: `/clients/${link.onboarding.company_id}`,
     action: actionForOnboardingLink(link),
+    scheduling: (link.onboarding.meetings ?? [])
+      .filter((meeting) =>
+        meeting.checklist_item?.automation_key?.startsWith(
+          "shared_onboarding:scheduling:",
+        ),
+      )
+      .sort(
+        (left, right) =>
+          (left.checklist_item?.sort_order ?? 0) -
+          (right.checklist_item?.sort_order ?? 0),
+      )
+      .map((meeting) => ({
+        id: meeting.id,
+        title: onboardingMeetingName({
+          automationKey: meeting.checklist_item?.automation_key,
+        }),
+        scheduled: meeting.scheduled,
+        scheduled_at: meeting.scheduled_at
+          ? new Date(meeting.scheduled_at).toISOString()
+          : null,
+      })),
   };
 }
 
@@ -116,6 +148,21 @@ export async function loadTaskOnboardingLinkMap(taskIds: string[]) {
           company_id: true,
           progress: true,
           company: { select: { name: true } },
+          meetings: {
+            orderBy: [{ created_at: "asc" }],
+            select: {
+              id: true,
+              scheduled: true,
+              scheduled_at: true,
+              checklist_item: {
+                select: {
+                  title: true,
+                  automation_key: true,
+                  sort_order: true,
+                },
+              },
+            },
+          },
         },
       },
       marketing_b2b_form: { select: { id: true } },

@@ -1,7 +1,7 @@
 import type { DepartmentSpacePreset } from "@/lib/department-spaces";
 import type { Task, TimeEntry } from "@/lib/types";
 import { timeEntryDurationSeconds } from "@/lib/time-entry-duration";
-import { formatDateTime as formatBrazilianDateTime } from "@/lib/utils";
+import { formatDateTime as formatLocalizedDateTime } from "@/lib/utils";
 
 export type TaskStatus = "todo" | "in_progress" | "done";
 export type DrawerKind =
@@ -210,8 +210,8 @@ export function entrySeconds(entry: TimeEntry) {
   return timeEntryDurationSeconds(entry);
 }
 
-export function formatDateTime(value: string) {
-  return formatBrazilianDateTime(value);
+export function formatDateTime(value: string, locale?: string) {
+  return formatLocalizedDateTime(value, locale);
 }
 
 export function humanize(value: string) {

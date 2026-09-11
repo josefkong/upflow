@@ -70,7 +70,7 @@ test.describe("Mobile responsive layout", () => {
     const ctx = await loggedInContext(browser, baseURL, SEEDED.admin.email);
     await ctx.addCookies([
       {
-        name: "upflow.sidebar.desktopOpen.v1",
+        name: "upflow.sidebar.desktopOpen.v2",
         value: "1",
         url: baseURL!,
       },
@@ -117,6 +117,9 @@ test.describe("Mobile responsive layout", () => {
     await page.getByRole("button", { name: "Open navigation" }).click();
     const navigationDialog = page.getByRole("dialog", { name: "Navigation" });
     await expect(navigationDialog).toBeVisible();
+    await expect(navigationDialog).toHaveCSS("width", "272px");
+    await expect(navigationDialog.getByTestId("sidebar-panel")).toBeVisible();
+    await expect(navigationDialog.getByTestId("sidebar-rail")).toHaveCount(0);
     const closeNavigation = navigationDialog.getByRole("button", {
       name: "Close navigation",
     });
@@ -147,7 +150,7 @@ test.describe("Mobile responsive layout", () => {
     await expect(desktopSidebar).toBeVisible();
     await expect(page.getByTestId("desktop-sidebar-restore")).toBeHidden();
     await expect(
-      desktopSidebar.getByTestId("sidebar-panel-toggle"),
+      desktopSidebar.getByRole("button", { name: "Hide sidebar" }),
     ).toBeFocused();
     await page.waitForTimeout(100);
     const desktopRequestBaseline = workspaceTreeRequests.length;
@@ -160,12 +163,10 @@ test.describe("Mobile responsive layout", () => {
     await page.waitForTimeout(150);
     expect(workspaceTreeRequests).toHaveLength(desktopRequestBaseline + 1);
 
-    const dashboardLink = desktopSidebar
-      .getByTestId("sidebar-rail-navigation")
-      .getByRole("link", {
-        name: "Dashboard",
-        exact: true,
-      });
+    const dashboardLink = desktopSidebar.getByRole("link", {
+      name: "Dashboard",
+      exact: true,
+    });
     await dashboardLink.focus();
     await expect(dashboardLink).toBeFocused();
 
@@ -190,7 +191,7 @@ test.describe("Mobile responsive layout", () => {
     await Promise.all([
       page.waitForURL(/\/calendar(?:\?|$)/),
       navigationDialog
-        .getByTestId("sidebar-rail-navigation")
+        .getByTestId("sidebar-panel-navigation")
         .getByRole("link", { name: "Calendar", exact: true })
         .click(),
     ]);
@@ -199,14 +200,14 @@ test.describe("Mobile responsive layout", () => {
     await expect
       .poll(() =>
         page.evaluate(() =>
-          localStorage.getItem("upflow.sidebar.desktopOpen.v1"),
+          localStorage.getItem("upflow.sidebar.desktopOpen.v2"),
         ),
       )
       .toBe("1");
     await expect
       .poll(async () =>
         (await ctx.cookies()).find(
-          (cookie) => cookie.name === "upflow.sidebar.desktopOpen.v1",
+          (cookie) => cookie.name === "upflow.sidebar.desktopOpen.v2",
         )?.value,
       )
       .toBe("1");
@@ -217,7 +218,7 @@ test.describe("Mobile responsive layout", () => {
     await expect(
       page
         .getByTestId("desktop-sidebar")
-        .getByTestId("sidebar-panel-toggle"),
+        .getByRole("button", { name: "Hide sidebar" }),
     ).toBeFocused();
     await ctx.close();
   });

@@ -21,7 +21,8 @@ async function GET_handler(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const taskId = searchParams.get("task_id");
-  if (!taskId) return NextResponse.json({ error: "task_id required" }, { status: 400 });
+  if (!taskId)
+    return NextResponse.json({ error: "task_id required" }, { status: 400 });
 
   const task = await prisma.task.findUnique({
     where: { id: taskId },
@@ -32,7 +33,10 @@ async function GET_handler(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { limit, cursor } = parsePagination(req, { defaultLimit: 100, maxLimit: 500 });
+  const { limit, cursor } = parsePagination(req, {
+    defaultLimit: 100,
+    maxLimit: 500,
+  });
 
   const rows = await prisma.comment.findMany({
     where: { task_id: taskId, parent_id: null },
@@ -56,7 +60,7 @@ async function POST_handler(req: NextRequest) {
   if (!_r.ok) return _r.response;
   const auth = _r.auth;
 
-  const body = await req.json() as {
+  const body = (await req.json()) as {
     task_id?: string;
     body?: string;
     parent_id?: string;
@@ -65,7 +69,10 @@ async function POST_handler(req: NextRequest) {
   const { task_id, body: commentBody, parent_id } = body;
 
   if (!task_id || typeof commentBody !== "string" || !commentBody.trim()) {
-    return NextResponse.json({ error: "task_id and body are required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "task_id and body are required" },
+      { status: 400 },
+    );
   }
 
   if (
@@ -74,7 +81,10 @@ async function POST_handler(req: NextRequest) {
       body.mention_ids.length > 50 ||
       body.mention_ids.some((id) => typeof id !== "string" || !isUuid(id)))
   ) {
-    return NextResponse.json({ error: "mention_ids must contain up to 50 user IDs" }, { status: 400 });
+    return NextResponse.json(
+      { error: "mention_ids must contain up to 50 user IDs" },
+      { status: 400 },
+    );
   }
 
   const task = await prisma.task.findUnique({
@@ -83,10 +93,12 @@ async function POST_handler(req: NextRequest) {
       id: true,
       title: true,
       assignee_id: true,
+      followers: { select: { user_id: true } },
       project: { select: { id: true, workspace_id: true, owner_id: true } },
     },
   });
-  if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+  if (!task)
+    return NextResponse.json({ error: "Task not found" }, { status: 404 });
   if (!(await canContributeToProject(auth, task.project))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -109,7 +121,10 @@ async function POST_handler(req: NextRequest) {
   const legacyMentions = extractLegacyCommentMentions(rawCommentBody);
   const pickerMentionIds = new Set(body.mention_ids as string[] | undefined);
   const mentionedUserIds = new Set<string>();
-  const idCandidates = new Set([...legacyMentions.userIds, ...pickerMentionIds]);
+  const idCandidates = new Set([
+    ...legacyMentions.userIds,
+    ...pickerMentionIds,
+  ]);
 
   // New clients send mention IDs separately while keeping the comment itself
   // readable as @Name. Older UUID markup and @email mentions remain supported.
@@ -119,7 +134,9 @@ async function POST_handler(req: NextRequest) {
         workspace_id: task.project.workspace_id,
         status: "active",
         OR: [
-          ...(idCandidates.size > 0 ? [{ user_id: { in: [...idCandidates] } }] : []),
+          ...(idCandidates.size > 0
+            ? [{ user_id: { in: [...idCandidates] } }]
+            : []),
           ...(legacyMentions.emails.size > 0
             ? [{ user: { email: { in: [...legacyMentions.emails] } } }]
             : []),
@@ -147,8 +164,16 @@ async function POST_handler(req: NextRequest) {
 
   const excerpt = storedCommentBody.slice(0, 140);
   const assigneeId = task.assignee_id;
-  const assigneeMentioned = assigneeId ? mentionedUserIds.has(assigneeId) : false;
+  const assigneeMentioned = assigneeId
+    ? mentionedUserIds.has(assigneeId)
+    : false;
   const notificationRecipients = new Set<string>();
+  const followerIds = task.followers
+    .map((follower) => follower.user_id)
+    .filter(
+      (userId) =>
+        userId !== auth.prismaUser.id && !mentionedUserIds.has(userId),
+    );
 
   // Keep the comment and its notifications consistent: a successful response
   // means every validated recipient has an inbox notification to receive.
@@ -174,6 +199,26 @@ async function POST_handler(req: NextRequest) {
         data: { type: "commented", user_id: assigneeId, task_id },
       });
       notificationRecipients.add(assigneeId);
+    }
+
+    for (const followerId of followerIds) {
+      if (notificationRecipients.has(followerId)) continue;
+      await tx.notification.create({
+        data: {
+          type: "commented",
+          user_id: followerId,
+          task_id,
+          data: {
+            source: "task_follower_comment",
+            comment_id: createdComment.id,
+            comment_excerpt: excerpt,
+            actor_id: auth.prismaUser.id,
+            actor_name: auth.prismaUser.name,
+            task_title: task.title,
+          },
+        },
+      });
+      notificationRecipients.add(followerId);
     }
 
     for (const recipientId of mentionedUserIds) {

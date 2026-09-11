@@ -39,7 +39,7 @@ export function SpaceDashboardDrawer({
   onCreateProject?: () => void;
   onTaskStatusChange: (task: Task, status: TaskStatus) => void;
 }) {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const status = kind.startsWith("status:") ? (kind.split(":")[1] as TaskStatus) : null;
   const statusTasks = status
     ? data.tasks.items.filter((task) => task.status === status)
@@ -173,7 +173,7 @@ export function SpaceDashboardDrawer({
                         {entry.description || entry.task?.title || entry.project?.name || t("spaceDashboard.timeEntry")}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {entry.project?.name || t("spaceDashboard.noProject")} - {formatDateTime(entry.started_at)}
+                        {entry.project?.name || t("spaceDashboard.noProject")} - {formatDateTime(entry.started_at, language)}
                       </p>
                     </div>
                     <span className="text-sm font-semibold text-foreground">
@@ -194,7 +194,7 @@ export function SpaceDashboardDrawer({
                 <div key={event.id} className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
                   <p className="text-sm font-medium text-foreground">{event.title}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {formatDateTime(event.starts_at)}
+                    {formatDateTime(event.starts_at, language)}
                     {event.location ? ` - ${event.location}` : ""}
                   </p>
                 </div>
@@ -211,7 +211,7 @@ export function SpaceDashboardDrawer({
                 <div key={event.id} className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
                   <p className="text-sm font-medium text-foreground">{humanize(event.type)}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {event.actor?.name || t("spaceDashboard.system")} - {formatDateTime(event.created_at)}
+                    {event.actor?.name || t("spaceDashboard.system")} - {formatDateTime(event.created_at, language)}
                   </p>
                 </div>
               ))}

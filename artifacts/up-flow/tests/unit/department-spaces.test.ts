@@ -11,13 +11,41 @@ const departmentSpacesSource = readFileSync(
 
 test("department space presets include all requested departments with emojis and starter lists", () => {
   const expected = [
-    ["💼", "Comercial", "Leads", "Proposals", "Follow-ups", "Contracts"],
-    ["🎯", "Marketing B2B", "Campaigns", "LinkedIn & Outbound", "Landing Pages", "Reports"],
-    ["📣", "Marketing B2C", "Campaigns", "Content Calendar", "Ads", "Promotions"],
-    ["🎨", "Creative & Design", "Design Queue", "Creative Reviews", "Brand Assets", "Approvals"],
-    ["💰", "Finance", "Invoices", "Payments", "Commissions", "Expenses"],
+    ["💼", "Comercial", "Leads", "Proposals", "Follow Up", "Contracts"],
+    [
+      "🎯",
+      "Marketing B2B",
+      "Campaigns",
+      "LinkedIn & Outbound",
+      "Landing Pages",
+      "Reports",
+    ],
+    [
+      "📣",
+      "Marketing B2C",
+      "Campaigns",
+      "Content Calendar",
+      "Ads",
+      "Promotions",
+    ],
+    [
+      "🎨",
+      "Creative & Design",
+      "Design Queue",
+      "Creative Reviews",
+      "Brand Assets",
+      "Approvals",
+    ],
+    ["💰", "Finance"],
     ["🎬", "Production", "Shoots", "Editing", "Publishing", "Deliverables"],
-    ["⚙️", "General Admin", "Internal Requests", "Access & Accounts", "Documents", "Vendors"],
+    [
+      "⚙️",
+      "General Admin",
+      "Internal Requests",
+      "Access & Accounts",
+      "Documents",
+      "Vendors",
+    ],
   ];
 
   for (const values of expected) {
@@ -70,8 +98,14 @@ test("General Admin includes the RH folder and ClickUp-style RH board model", ()
 });
 
 test("Creative & Design provisions the Social Media root list model", () => {
-  const socialMediaSource = readFileSync(join(root, "src/lib/social-media.ts"), "utf8");
-  const spacePage = readFileSync(join(root, "src/app/(dashboard)/spaces/[id]/page.tsx"), "utf8");
+  const socialMediaSource = readFileSync(
+    join(root, "src/lib/social-media.ts"),
+    "utf8",
+  );
+  const spacePage = readFileSync(
+    join(root, "src/app/(dashboard)/spaces/[id]/page.tsx"),
+    "utf8",
+  );
 
   assert.match(departmentSpacesSource, /SOCIAL_MEDIA_LIST_PRESET/);
   assert.match(
@@ -105,8 +139,11 @@ test("Creative & Design provisions the Social Media root list model", () => {
     assert.ok(socialMediaSource.includes(value), `missing ${value}`);
   }
 
-  assert.match(spacePage, /"creative_design"/);
-  assert.match(spacePage, /api\/spaces\/\$\{id\}\/department-defaults/);
+  assert.doesNotMatch(
+    spacePage,
+    /api\/spaces\/\$\{id\}\/department-defaults/,
+    "opening a Space must not provision every department or refetch the page",
+  );
 });
 
 test("department setup is idempotent but not auto-seeded into personal workspace load paths", () => {
@@ -116,13 +153,51 @@ test("department setup is idempotent but not auto-seeded into personal workspace
   assert.match(departmentSpacesSource, /prisma\.space\.create/);
   assert.match(departmentSpacesSource, /prisma\.project\.createMany/);
 
-  const workspaceRoute = readFileSync(join(root, "src/app/api/workspaces/route.ts"), "utf8");
+  const workspaceRoute = readFileSync(
+    join(root, "src/app/api/workspaces/route.ts"),
+    "utf8",
+  );
   const workspaceLib = readFileSync(join(root, "src/lib/workspace.ts"), "utf8");
-  const sidebarRoute = readFileSync(join(root, "src/app/api/sidebar/route.ts"), "utf8");
+  const sidebarRoute = readFileSync(
+    join(root, "src/app/api/sidebar/route.ts"),
+    "utf8",
+  );
 
   assert.doesNotMatch(workspaceRoute, /ensureDepartmentSpaces\(workspace\.id/);
   assert.doesNotMatch(workspaceLib, /ensureDepartmentSpaces\(workspace\.id/);
-  assert.doesNotMatch(sidebarRoute, /ensureDepartmentSpaces\(auth\.currentWorkspaceId/);
+  assert.doesNotMatch(
+    sidebarRoute,
+    /ensureDepartmentSpaces\(auth\.currentWorkspaceId/,
+  );
+});
+
+test("only Comercial and Financeiro receive projects until another workflow is defined", () => {
+  assert.match(
+    departmentSpacesSource,
+    /PROJECT_BEARING_DEPARTMENT_KEYS = new Set<DepartmentSpaceKey>\(\[[\s\S]*?"comercial"[\s\S]*?"finance"/,
+  );
+  assert.match(
+    departmentSpacesSource,
+    /if \(!PROJECT_BEARING_DEPARTMENT_KEYS\.has\(preset\.department_key\)\)\s*continue/,
+  );
+  assert.equal(
+    departmentSpacesSource.match(
+      /if \(!PROJECT_BEARING_DEPARTMENT_KEYS\.has\(preset\.department_key\)\)\s*continue/g,
+    )?.length,
+    2,
+    "both starter folders and starter projects must be restricted",
+  );
+  assert.match(
+    departmentSpacesSource,
+    /department_key: "finance"[\s\S]*?starter_lists: \[\]/,
+    "Finance must receive only projects created by fixed Flow transitions",
+  );
+
+  const sidebarPanel = readFileSync(
+    join(root, "src/components/layout/sidebar/panel.tsx"),
+    "utf8",
+  );
+  assert.doesNotMatch(sidebarPanel, /sidebar:restore-design-queue/);
 });
 
 test("space dashboards and department task creation use department presets", () => {
@@ -141,11 +216,23 @@ test("space dashboards and department task creation use department presets", () 
   assert.match(spacePage, /default_task_template_id/);
 });
 
-test("RH board fields drive project board columns and setup refresh", () => {
-  const kanbanBoard = readFileSync(join(root, "src/components/projects/kanban-board.tsx"), "utf8");
-  const boardStatus = readFileSync(join(root, "src/lib/task-board-status.ts"), "utf8");
-  const projectPage = readFileSync(join(root, "src/app/(dashboard)/projects/[id]/page.tsx"), "utf8");
-  const spacePage = readFileSync(join(root, "src/app/(dashboard)/spaces/[id]/page.tsx"), "utf8");
+test("RH board fields drive project board columns without provisioning on read", () => {
+  const kanbanBoard = readFileSync(
+    join(root, "src/components/projects/kanban-board.tsx"),
+    "utf8",
+  );
+  const boardStatus = readFileSync(
+    join(root, "src/lib/task-board-status.ts"),
+    "utf8",
+  );
+  const projectPage = readFileSync(
+    join(root, "src/app/(dashboard)/projects/[id]/page.tsx"),
+    "utf8",
+  );
+  const spacePage = readFileSync(
+    join(root, "src/app/(dashboard)/spaces/[id]/page.tsx"),
+    "utf8",
+  );
   const defaultsRoute = readFileSync(
     join(root, "src/app/api/spaces/[id]/department-defaults/route.ts"),
     "utf8",
@@ -153,10 +240,10 @@ test("RH board fields drive project board columns and setup refresh", () => {
 
   assert.match(kanbanBoard, /resolveTaskBoardStatus/);
   assert.match(boardStatus, /RH_BOARD_FIELD_NAME/);
-  assert.match(kanbanBoard, /custom-fields/);
+  assert.match(kanbanBoard, /customFields/);
   assert.match(kanbanBoard, /addTaskToColumn/);
   assert.match(projectPage, /initialCustomFieldValues/);
-  assert.match(spacePage, /department-defaults/);
+  assert.doesNotMatch(spacePage, /department-defaults/);
   assert.match(defaultsRoute, /ensureDepartmentSpaces/);
   assert.match(defaultsRoute, /isWorkspaceAdminFor/);
 });

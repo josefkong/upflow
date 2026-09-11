@@ -60,7 +60,7 @@ test("dashboard and project task surfaces use translation keys", () => {
   assert.match(toolbar, /t\("toolbar\.board"\)/);
   assert.match(toolbar, /t\("toolbar\.searchTasks"\)/);
   assert.match(taskSheet, /t\("task\.createTask"\)/);
-  assert.match(taskSheet, /t\("task\.detailsCover"\)/);
+  assert.doesNotMatch(taskSheet, /task\.detailsCover/);
   assert.match(taskTemplates, /t\("taskTemplate\.type"\)/);
 });
 
@@ -98,7 +98,7 @@ test("core rollout surfaces are wired to the language provider", () => {
   assert.match(dashboard, /t\("dashboard\.todayMeetings"\)/);
   assert.match(dashboard, /t\("dashboard\.lastActions"\)/);
   assert.match(calendar, /useLanguage/);
-  assert.match(calendar, /t\("calendar\.newEvent"\)/);
+  assert.match(calendar, /t\("calendar\.quickCreateShort"\)/);
   assert.match(calendar, /Intl\.DateTimeFormat\(language/);
   assert.match(clients, /t\("clients\.planNotSet"\)/);
   assert.match(clients, /t\("clients\.responsibleManager"\)/);
@@ -108,7 +108,7 @@ test("core rollout surfaces are wired to the language provider", () => {
   assert.match(createCompanyDialog, /t\("companyDialog\.standaloneTitle"\)/);
   assert.match(createCompanyDialog, /t\("companyDialog\.responsibleDepartment"\)/);
   assert.match(createCompanyDialog, /t\(option\.labelKey\)/);
-  assert.match(createCompanyDialog, /optionLabel\(service, SERVICE_OPTIONS, t\)/);
+  assert.match(createCompanyDialog, /optionLabel\(service, serviceOptions, t\)/);
   assert.match(projects, /t\("projects\.title"\)/);
   assert.match(projectDirectory, /t\("projects\.directoryTitle"\)/);
   assert.match(projectDirectory, /t\("projects\.deleteConfirm"/);

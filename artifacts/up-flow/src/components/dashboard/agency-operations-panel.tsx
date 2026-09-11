@@ -5,6 +5,7 @@ import { AlertCircle, TrendingDown, Users2 } from "lucide-react";
 import type { Project, Task } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 import { useLanguage } from "@/components/language-provider";
+import { localizeAgencyRiskSignal } from "@/components/dashboard/dashboard-utils";
 
 type AgencyDrawer =
   | "client_health"
@@ -48,6 +49,11 @@ interface AgencyOperationsData {
       label: string;
       count: number;
       trace: string;
+      trace_values?: {
+        member_name?: string;
+        member_open_tasks?: number;
+        total_open_tasks?: number;
+      };
     }>;
   };
 }
@@ -61,7 +67,7 @@ export default function AgencyOperationsPanel({
   onOpenDrawer: (drawer: AgencyDrawer) => void;
   onOpenTask: (task: Task) => void;
 }) {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const clientHealth = data.client_health;
   const deliveryItems = data.delivery_overview?.items ?? [];
   const creativeQueue = data.creative_queue;
@@ -149,7 +155,7 @@ export default function AgencyOperationsPanel({
                     </div>
                     <p className="mt-1 truncate text-xs text-muted-foreground">
                       {item.project.company?.name ?? item.project.space?.name ?? t("dashboard.internalOperation")}
-                      {item.next_deadline ? ` - ${formatDate(item.next_deadline)}` : ` - ${t("dashboard.noDeadline")}`}
+                      {item.next_deadline ? ` - ${formatDate(item.next_deadline, language)}` : ` - ${t("dashboard.noDeadline")}`}
                     </p>
                   </Link>
                 ))
@@ -188,7 +194,7 @@ export default function AgencyOperationsPanel({
                       </span>
                     </div>
                     <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {task.project?.name ?? t("dashboard.noProject")}{task.due_date ? ` - ${formatDate(task.due_date)}` : ""}
+                      {task.project?.name ?? t("dashboard.noProject")}{task.due_date ? ` - ${formatDate(task.due_date, language)}` : ""}
                     </p>
                   </button>
                 ))
@@ -214,7 +220,9 @@ export default function AgencyOperationsPanel({
               {t("dashboard.notEnoughRiskData")}
             </p>
           ) : (
-            topRisks.map((signal) => (
+            topRisks.map((signal) => {
+              const copy = localizeAgencyRiskSignal(signal, t);
+              return (
               <button
                 key={signal.key}
                 type="button"
@@ -222,12 +230,13 @@ export default function AgencyOperationsPanel({
                 className="w-full rounded-xl border border-white/5 bg-white/[0.03] px-3 py-3 text-left transition-all hover:-translate-y-0.5 hover:border-upflow-warning/35 hover:bg-white/[0.06]"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-medium text-foreground">{signal.label}</span>
+                  <span className="text-sm font-medium text-foreground">{copy.label}</span>
                   <span className="text-lg font-bold text-upflow-warning">{signal.count}</span>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">{signal.trace}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{copy.trace}</p>
               </button>
-            ))
+              );
+            })
           )}
         </div>
         <button
@@ -258,11 +267,11 @@ function AgencyMiniCard({
     <button
       type="button"
       onClick={onClick}
-      className="rounded-xl px-4 py-3 text-left upflow-card upflow-card-hover upflow-focus-glow"
+      className="min-h-[114px] rounded-xl px-4 py-3 text-left upflow-card upflow-card-hover upflow-focus-glow"
     >
-      <p className="text-xs font-semibold uppercase text-muted-foreground">{title}</p>
-      <p className="mt-2 text-xl font-bold text-foreground">{value}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+      <p className="line-clamp-1 h-4 text-xs font-semibold uppercase leading-4 text-muted-foreground">{title}</p>
+      <p className="mt-2 flex h-7 items-center text-xl font-bold leading-7 text-foreground">{value}</p>
+      <p className="mt-1 line-clamp-2 h-8 text-xs leading-4 text-muted-foreground">{hint}</p>
     </button>
   );
 }

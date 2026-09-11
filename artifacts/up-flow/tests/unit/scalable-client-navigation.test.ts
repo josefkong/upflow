@@ -60,7 +60,7 @@ test("the sidebar includes visible generated onboarding work", () => {
   assert.match(sidebarRoute, /kind: "onboarding"/);
   assert.match(sidebarRoute, /onboarding_enabled: true/);
   assert.match(sidebarRoute, /company_id: \{ not: null \}/);
-  assert.match(sidebarRoute, /company: \{ is: \{ name: \{ contains: q/);
+  assert.match(sidebarRoute, /company:\s*\{\s*is:\s*\{\s*name:\s*\{ contains: q/s);
   assert.match(sidebarRoute, /pinned_clients: pinnedClients/);
   assert.match(panelData, /pinned_clients\?: SidebarPinnedClient\[\]/);
   assert.match(panel, /PinnedClientsSection/);

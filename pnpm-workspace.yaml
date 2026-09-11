@@ -58,7 +58,10 @@ overrides:
   '@opentelemetry/core': 2.9.0
   body-parser: 2.3.0
   nanoid: 3.3.18
-  sharp: 0.35.2
+  sharp: 0.35.4
+  '@babel/core': 7.29.7
+  browserslist: 4.28.9
+  baseline-browser-mapping: 2.11.21
   'minimatch@10>brace-expansion': 5.0.9
   '@esbuild-kit/esm-loader': npm:tsx@^4.21.0
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-arm64': '-'
@@ -87,7 +90,7 @@ overrides:
   path-to-regexp: 8.4.2
   picomatch: 4.0.5
   postcss: 8.5.23
-  qs: 6.15.3
+  qs: 6.16.0
   esbuild>@esbuild/aix-ppc64: '-'
   esbuild>@esbuild/android-arm: '-'
   esbuild>@esbuild/android-arm64: '-'

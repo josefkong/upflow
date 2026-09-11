@@ -1,20 +1,51 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import Header from "@/components/layout/header";
 import { logError } from "@/lib/log-error";
-import { Bell, Calendar as CalendarIcon, Check, CheckSquare, ChevronLeft, ChevronRight, Cloud, DoorOpen, Pencil, Plus, RefreshCw, Trash2, Video } from "lucide-react";
-import { appDateKey, appTimeInputValue, cn, formatLongDate, formatTime, mergeAppDateAndTime } from "@/lib/utils";
-import type { CalendarEvent, Task } from "@/lib/types";
+import {
+  Calendar as CalendarIcon,
+  CalendarDays,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Cloud,
+  DoorOpen,
+  Plus,
+  RefreshCw,
+  Workflow,
+} from "lucide-react";
+import {
+  appDateKey,
+  cn,
+  formatLongDate,
+  formatTime,
+  mergeAppDateAndTime,
+} from "@/lib/utils";
+import type { CalendarEvent } from "@/lib/types";
 import ScheduleMeetingDialog from "@/components/dashboard/schedule-meeting-dialog";
-import TaskCreateSheet from "@/components/projects/task-create-sheet";
 import EventEditorSheet from "@/components/calendar/event-editor-sheet";
+import GuidedCalendarCreateDialog from "@/components/calendar/guided-calendar-create-dialog";
+import CalendarTimeGrid, {
+  type CalendarTimelineItem,
+} from "@/components/calendar/calendar-time-grid";
 import GoogleCalendarIntegrationCard from "@/components/calendar/google-calendar-integration-card";
+import { CreateActionButton } from "@/components/ui/create-action-button";
 import { useLanguage } from "@/components/language-provider";
 import { useAppUser } from "@/components/user-provider";
+import {
+  departmentColorTone,
+  resolveUniqueDepartmentColors,
+} from "@/lib/department-colors";
+import {
+  isMeetingRoomEvent,
+  meetingRoomKeyFromLocation,
+  meetingRoomNameFromLocation,
+} from "@/lib/meeting-rooms";
 
 const WEEKDAY_KEYS = [
   "time.day.mon",
@@ -49,41 +80,30 @@ function startOfMonthGrid(year: number, month: number) {
   return new Date(year, month, 1 - offset);
 }
 
-function eventTime(event: CalendarEvent) {
-  return formatTime(event.starts_at);
+function eventTime(event: CalendarEvent, language: "en" | "pt-BR") {
+  return formatTime(event.starts_at, language);
 }
 
-const taskColor: Record<Task["priority"], string> = {
-  low: "bg-upflow-success/30 text-upflow-success border-l-upflow-success",
-  medium: "bg-primary/30 text-primary border-l-primary",
-  high: "bg-upflow-danger/30 text-upflow-danger border-l-upflow-danger",
-};
-
 const DEFAULT_EVENT_COLOR = "bg-primary/20 text-primary border-l-primary";
-const COMPLETED_EVENT_COLOR = "bg-upflow-success/30 text-upflow-success border-l-upflow-success";
-const ROOM_BOOKING_COLOR = "bg-cyan-400/20 text-cyan-100 border-l-cyan-400";
-const ROOM_NAME = "Sala de Reuniao";
+const COMPLETED_EVENT_COLOR =
+  "bg-upflow-success/30 text-upflow-success border-l-upflow-success";
 const DAY_CELL_VISIBLE_ITEM_LIMIT = 6;
-const EVENT_COLOR_OPTIONS = [
-  { key: "default", color: null, className: DEFAULT_EVENT_COLOR, labelKey: "calendar.colorDefault" },
-  { key: "complete", color: COMPLETED_EVENT_COLOR, className: COMPLETED_EVENT_COLOR, labelKey: "calendar.colorComplete" },
-  { key: "amber", color: "bg-upflow-warning/30 text-upflow-warning border-l-upflow-warning", className: "bg-upflow-warning/30 text-upflow-warning border-l-upflow-warning", labelKey: "calendar.colorWarning" },
-  { key: "red", color: "bg-upflow-danger/30 text-upflow-danger border-l-upflow-danger", className: "bg-upflow-danger/30 text-upflow-danger border-l-upflow-danger", labelKey: "calendar.colorUrgent" },
-] as const;
-
-const USER_EVENT_TONES = [
-  { chip: "border-sky-400/40 bg-sky-400/10 text-sky-700 dark:text-sky-100", dot: "bg-sky-400", event: "bg-sky-400/20 text-sky-800 border-l-sky-400 dark:text-sky-100" },
-  { chip: "border-violet-400/40 bg-violet-400/10 text-violet-700 dark:text-violet-100", dot: "bg-violet-400", event: "bg-violet-400/20 text-violet-800 border-l-violet-400 dark:text-violet-100" },
-  { chip: "border-emerald-400/40 bg-emerald-400/10 text-emerald-100", dot: "bg-emerald-400", event: "bg-emerald-400/20 text-emerald-100 border-l-emerald-400" },
-  { chip: "border-amber-400/40 bg-amber-400/10 text-amber-100", dot: "bg-amber-400", event: "bg-amber-400/20 text-amber-100 border-l-amber-400" },
-  { chip: "border-rose-400/40 bg-rose-400/10 text-rose-100", dot: "bg-rose-400", event: "bg-rose-400/20 text-rose-100 border-l-rose-400" },
-  { chip: "border-cyan-400/40 bg-cyan-400/10 text-cyan-100", dot: "bg-cyan-400", event: "bg-cyan-400/20 text-cyan-100 border-l-cyan-400" },
-] as const;
 
 type SelectableUser = {
   id: string;
   name: string | null;
   email: string;
+  department_id?: string | null;
+  department_name?: string | null;
+  department_color?: string | null;
+  department_sort_order?: number | null;
+};
+
+type CalendarDepartment = {
+  id: string;
+  name: string;
+  color: string | null;
+  sort_order: number | null;
 };
 
 type SharedGoogleAgendaEntry = {
@@ -102,6 +122,47 @@ type SharedAgendaResponse = {
 };
 
 type CalendarSource = "all" | "upflow" | "google" | "room";
+type AgendaScope = "me" | "all" | `department:${string}` | `user:${string}`;
+type CalendarViewMode = "day" | "fourDays" | "week" | "month";
+
+function addCalendarDays(date: Date, amount: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return next;
+}
+
+function startOfCalendarWeek(date: Date) {
+  const start = new Date(date);
+  const weekDay = start.getDay();
+  start.setDate(start.getDate() - (weekDay === 0 ? 6 : weekDay - 1));
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+function capitalizeCalendarLabel(value: string, language: "en" | "pt-BR") {
+  return value
+    ? `${value.charAt(0).toLocaleUpperCase(language)}${value.slice(1)}`
+    : value;
+}
+
+function calendarRangeTitle(days: Date[], language: "en" | "pt-BR") {
+  const first = days[0];
+  const last = days.at(-1) ?? first;
+  if (!first) return "";
+  if (days.length === 1)
+    return capitalizeCalendarLabel(formatLongDate(first, language), language);
+
+  const startLabel = new Intl.DateTimeFormat(language, {
+    day: "2-digit",
+    month: "short",
+  }).format(first);
+  const endLabel = new Intl.DateTimeFormat(language, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(last);
+  return capitalizeCalendarLabel(`${startLabel} – ${endLabel}`, language);
+}
 
 type SelectedScheduleItem =
   | { source: "upflow"; startsAt: string; event: CalendarEvent }
@@ -113,8 +174,16 @@ function agendaEntryOccursOnDay(entry: SharedGoogleAgendaEntry, day: Date) {
   const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate());
 
   if (entry.all_day) {
-    const entryStart = new Date(startsAt.getFullYear(), startsAt.getMonth(), startsAt.getDate());
-    const entryEnd = new Date(endsAt.getFullYear(), endsAt.getMonth(), endsAt.getDate());
+    const entryStart = new Date(
+      startsAt.getFullYear(),
+      startsAt.getMonth(),
+      startsAt.getDate(),
+    );
+    const entryEnd = new Date(
+      endsAt.getFullYear(),
+      endsAt.getMonth(),
+      endsAt.getDate(),
+    );
     return dayStart >= entryStart && dayStart < entryEnd;
   }
 
@@ -128,6 +197,7 @@ type ScheduleDefaults = {
   title?: string;
   description?: string;
   taskId?: string | null;
+  onboardingChecklistItemId?: string | null;
   projectId?: string | null;
   time?: string;
   attendeeIds?: string[];
@@ -137,23 +207,12 @@ function eventColor(event: CalendarEvent) {
   return event.color || DEFAULT_EVENT_COLOR;
 }
 
-function normalizeRoom(value: string | null | undefined) {
-  return (value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
-function isMeetingRoomEvent(event: CalendarEvent) {
-  const location = normalizeRoom(event.location);
-  return (
-    event.type === "meeting" &&
-    (location.includes("sala de reuniao") || location.includes("meeting room"))
-  );
-}
-
 function eventIsComplete(event: CalendarEvent) {
-  return event.color === COMPLETED_EVENT_COLOR || event.color?.includes("upflow-success") || false;
+  return (
+    event.color === COMPLETED_EVENT_COLOR ||
+    event.color?.includes("upflow-success") ||
+    false
+  );
 }
 
 function eventHasEnded(event: CalendarEvent, now: Date) {
@@ -162,7 +221,8 @@ function eventHasEnded(event: CalendarEvent, now: Date) {
 }
 
 function eventDisplayState(event: CalendarEvent, now: Date) {
-  const cancelled = (event as CalendarEvent & { status?: string }).status === "cancelled";
+  const cancelled =
+    (event as CalendarEvent & { status?: string }).status === "cancelled";
   if (cancelled) {
     return {
       isComplete: false,
@@ -185,11 +245,17 @@ function eventDisplayState(event: CalendarEvent, now: Date) {
 
 function eventUserIds(event: CalendarEvent) {
   return Array.from(
-    new Set([
-      event.created_by,
-      ...(event.attendees ?? []).map((attendee) => attendee.user_id),
-    ].filter(Boolean)),
+    new Set(
+      [
+        event.created_by,
+        ...(event.attendees ?? []).map((attendee) => attendee.user_id),
+      ].filter(Boolean),
+    ),
   );
+}
+
+function isCalendarAppointment(event: CalendarEvent) {
+  return event.type !== "task" && event.type !== "deadline";
 }
 
 export default function CalendarPage() {
@@ -201,31 +267,48 @@ export default function CalendarPage() {
   const [cursor, setCursor] = useState(
     () => new Date(today.getFullYear(), today.getMonth(), 1),
   );
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [sharedAgendaEntries, setSharedAgendaEntries] = useState<SharedGoogleAgendaEntry[]>([]);
+  const [sharedAgendaEntries, setSharedAgendaEntries] = useState<
+    SharedGoogleAgendaEntry[]
+  >([]);
   const [sharedAgendaUnavailable, setSharedAgendaUnavailable] = useState(false);
-  const [loadedCalendarRange, setLoadedCalendarRange] = useState<string | null>(null);
-  const [failedCalendarRange, setFailedCalendarRange] = useState<string | null>(null);
+  const [loadedCalendarRange, setLoadedCalendarRange] = useState<string | null>(
+    null,
+  );
+  const [failedCalendarRange, setFailedCalendarRange] = useState<string | null>(
+    null,
+  );
   const [selected, setSelected] = useState<Date>(today);
   const [showSchedule, setShowSchedule] = useState(false);
-  const [showNewTask, setShowNewTask] = useState(false);
-  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
-  const [scheduleType, setScheduleType] = useState<"meeting" | "reminder">("meeting");
+  const [manualCreateOpen, setManualCreateOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<CalendarViewMode>("month");
+  const [scheduleType, setScheduleType] = useState<"meeting" | "reminder">(
+    "meeting",
+  );
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
-  const [manageEvents, setManageEvents] = useState(false);
-  const [eventMenu, setEventMenu] = useState<{ event: CalendarEvent; x: number; y: number } | null>(null);
-  const [draggedEventId, setDraggedEventId] = useState<string | null>(null);
-  const [dragOverDateKey, setDragOverDateKey] = useState<string | null>(null);
   const [people, setPeople] = useState<SelectableUser[]>([]);
+  const [workspaceDepartments, setWorkspaceDepartments] = useState<
+    CalendarDepartment[]
+  >([]);
   const [peopleLoading, setPeopleLoading] = useState(false);
-  const [selectedUserId, setSelectedUserId] = useState("");
+  const [agendaScope, setAgendaScope] = useState<AgendaScope>("me");
   const [sourceFilter, setSourceFilter] = useState<CalendarSource>("all");
-  const selectedUserIds = useMemo(() => (selectedUserId ? new Set([selectedUserId]) : new Set<string>()), [selectedUserId]);
-  const [scheduleDefaults, setScheduleDefaults] = useState<ScheduleDefaults | null>(null);
+  const selectedUserIds = useMemo(() => {
+    if (agendaScope === "all") return new Set<string>();
+    if (agendaScope === "me") return new Set(user?.id ? [user.id] : []);
+    if (agendaScope.startsWith("user:"))
+      return new Set([agendaScope.slice("user:".length)]);
+    const departmentId = agendaScope.slice("department:".length);
+    return new Set(
+      people
+        .filter((person) => person.department_id === departmentId)
+        .map((person) => person.id),
+    );
+  }, [agendaScope, people, user?.id]);
+  const [scheduleDefaults, setScheduleDefaults] =
+    useState<ScheduleDefaults | null>(null);
   const calendarRequestIdRef = useRef(0);
   const calendarRequestControllerRef = useRef<AbortController | null>(null);
-  const draggedEventIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const result = searchParams?.get("google_calendar");
@@ -251,7 +334,9 @@ export default function CalendarPage() {
     const nextParams = new URLSearchParams(searchParams?.toString());
     nextParams.delete("google_calendar");
     const query = nextParams.toString();
-    router.replace(query ? `/calendar?${query}` : "/calendar", { scroll: false });
+    router.replace(query ? `/calendar?${query}` : "/calendar", {
+      scroll: false,
+    });
   }, [router, searchParams, t]);
 
   useEffect(() => {
@@ -262,9 +347,10 @@ export default function CalendarPage() {
     }
 
     const create = searchParams?.get("create");
-    if (create !== "meeting" && create !== "event" && create !== "reminder") return;
+    if (create !== "meeting" && create !== "event" && create !== "reminder")
+      return;
 
-    const type = create === "reminder" ? "reminder" : "meeting";
+    const type = create === "meeting" ? "meeting" : "reminder";
     const openDate = linkedDate ?? new Date();
     setScheduleType(type);
     setScheduleDefaults({
@@ -272,8 +358,12 @@ export default function CalendarPage() {
       title: searchParams?.get("title") ?? undefined,
       description: searchParams?.get("description") ?? undefined,
       taskId: searchParams?.get("task"),
+      onboardingChecklistItemId: searchParams?.get("onboarding_item"),
       projectId: searchParams?.get("project"),
-      attendeeIds: (searchParams?.get("attendees") ?? "").split(",").map((item) => item.trim()).filter(Boolean),
+      attendeeIds: (searchParams?.get("attendees") ?? "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
       time: searchParams?.get("time") ?? "09:00",
     });
     setSelected(openDate);
@@ -311,48 +401,61 @@ export default function CalendarPage() {
     calendarRequestControllerRef.current?.abort();
     const controller = new AbortController();
     calendarRequestControllerRef.current = controller;
-    setFailedCalendarRange((current) => (current === rangeKey ? null : current));
+    setFailedCalendarRange((current) =>
+      current === rangeKey ? null : current,
+    );
     const from = mergeAppDateAndTime(gridStart, "00:00").toISOString();
     const to = mergeAppDateAndTime(gridEnd, "23:59").toISOString();
-    const taskRangeParams = new URLSearchParams({ due_from: from, due_to: to });
     const sharedAgendaRequest = fetch(
       `/api/calendar/shared-agenda?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
       { signal: controller.signal },
     )
       .then(async (response) => {
-        if (!response.ok) throw new Error(`Unable to load shared Google agenda: ${response.status}`);
-        const payload = (await response.json()) as { items?: SharedGoogleAgendaEntry[] };
-        return { items: payload.items ?? [], failed: false } satisfies SharedAgendaResponse;
+        if (!response.ok)
+          throw new Error(
+            `Unable to load shared Google agenda: ${response.status}`,
+          );
+        const payload = (await response.json()) as {
+          items?: SharedGoogleAgendaEntry[];
+        };
+        return {
+          items: payload.items ?? [],
+          failed: false,
+        } satisfies SharedAgendaResponse;
       })
       .catch((error) => {
-        if (!controller.signal.aborted) logError("calendar:shared-agenda:load", error);
+        if (!controller.signal.aborted)
+          logError("calendar:shared-agenda:load", error);
         return { items: [], failed: true } satisfies SharedAgendaResponse;
       });
 
     Promise.all([
-      fetch(`/api/tasks?${taskRangeParams.toString()}`, { signal: controller.signal }).then(async (response) => {
-        if (!response.ok) throw new Error(`Unable to load tasks: ${response.status}`);
-        return response.json();
-      }),
-      fetch(`/api/calendar/events?from=${from}&to=${to}`, { signal: controller.signal }).then(async (response) => {
-        if (!response.ok) throw new Error(`Unable to load calendar events: ${response.status}`);
+      fetch(`/api/calendar/events?from=${from}&to=${to}`, {
+        signal: controller.signal,
+      }).then(async (response) => {
+        if (!response.ok)
+          throw new Error(`Unable to load calendar events: ${response.status}`);
         return response.json();
       }),
       sharedAgendaRequest,
     ])
-      .then(([taskData, eventData, sharedAgendaData]) => {
+      .then(([eventData, sharedAgendaData]) => {
         if (requestId !== calendarRequestIdRef.current) return;
-        const taskList = (Array.isArray(taskData) ? taskData : taskData.items ?? taskData.tasks ?? []) as Task[];
-        const eventList = (eventData.items ?? eventData.events ?? []) as CalendarEvent[];
-        setTasks(taskList);
-        setEvents(eventList);
+        const eventList = (eventData.items ??
+          eventData.events ??
+          []) as CalendarEvent[];
+        setEvents(eventList.filter(isCalendarAppointment));
         setSharedAgendaEntries(sharedAgendaData.items);
         setSharedAgendaUnavailable(sharedAgendaData.failed);
         setLoadedCalendarRange(rangeKey);
         setFailedCalendarRange(null);
       })
       .catch((err) => {
-        if (requestId !== calendarRequestIdRef.current || controller.signal.aborted) return;
+        if (
+          requestId !== calendarRequestIdRef.current ||
+          controller.signal.aborted
+        )
+          return;
         logError("calendar:load", err);
         setFailedCalendarRange(rangeKey);
       })
@@ -378,16 +481,32 @@ export default function CalendarPage() {
     if (!user?.currentWorkspaceId) return;
     const controller = new AbortController();
     setPeopleLoading(true);
-    fetch(`/api/users?workspace_id=${user.currentWorkspaceId}&status=active`, {
-      signal: controller.signal,
-    })
-      .then(async (res) => {
-        if (!res.ok) return { items: [] };
+    Promise.all([
+      fetch(
+        `/api/users?workspace_id=${user.currentWorkspaceId}&status=active`,
+        {
+          signal: controller.signal,
+        },
+      ).then(async (res) => {
+        if (!res.ok) return { items: [] as SelectableUser[] };
         return (await res.json()) as { items?: SelectableUser[] };
+      }),
+      fetch(`/api/workspaces/${user.currentWorkspaceId}/departments`, {
+        signal: controller.signal,
+      }).then(async (res) => {
+        if (!res.ok) return { items: [] as CalendarDepartment[] };
+        return (await res.json()) as { items?: CalendarDepartment[] };
+      }),
+    ])
+      .then(([peopleData, departmentData]) => {
+        setPeople(peopleData.items ?? []);
+        setWorkspaceDepartments(departmentData.items ?? []);
       })
-      .then((data) => setPeople(data.items ?? []))
       .catch((err) => {
-        if ((err as Error).name !== "AbortError") setPeople([]);
+        if ((err as Error).name !== "AbortError") {
+          setPeople([]);
+          setWorkspaceDepartments([]);
+        }
       })
       .finally(() => setPeopleLoading(false));
 
@@ -408,32 +527,53 @@ export default function CalendarPage() {
     d.setDate(gridStart.getDate() + i);
     return d;
   });
-
-  const filteredTasks = useMemo(() => {
-    const currentRangeTasks = calendarHasLoaded ? tasks : [];
-    if (sourceFilter === "google" || sourceFilter === "room") return [];
-    if (selectedUserIds.size === 0) return currentRangeTasks;
-    return currentRangeTasks.filter((task) => task.assignee_id && selectedUserIds.has(task.assignee_id));
-  }, [calendarHasLoaded, selectedUserIds, sourceFilter, tasks]);
-
-  const tasksByDay = useMemo(() => {
-    const map = new Map<string, Task[]>();
-    filteredTasks.forEach((task) => {
-      if (!task.due_date) return;
-      const key = dateKey(task.due_date);
-      map.set(key, [...(map.get(key) ?? []), task]);
-    });
-    return map;
-  }, [filteredTasks]);
-
-  const userToneById = useMemo(() => {
-    return new Map(
-      people.map((person, index) => [
-        person.id,
-        USER_EVENT_TONES[index % USER_EVENT_TONES.length],
-      ]),
+  const timelineDays = useMemo(() => {
+    if (viewMode === "day") return [new Date(selected)];
+    const first =
+      viewMode === "week" ? startOfCalendarWeek(selected) : new Date(selected);
+    const count = viewMode === "week" ? 7 : 4;
+    return Array.from({ length: count }, (_, index) =>
+      addCalendarDays(first, index),
     );
-  }, [people]);
+  }, [selected, viewMode]);
+
+  const departments = useMemo(() => {
+    if (workspaceDepartments.length > 0) {
+      return [...workspaceDepartments].sort((left, right) => {
+        const order =
+          (left.sort_order ?? Number.MAX_SAFE_INTEGER) -
+          (right.sort_order ?? Number.MAX_SAFE_INTEGER);
+        return order || left.name.localeCompare(right.name);
+      });
+    }
+
+    const byId = new Map<string, CalendarDepartment>();
+    people.forEach((person) => {
+      if (!person.department_id || !person.department_name) return;
+      byId.set(person.department_id, {
+        id: person.department_id,
+        name: person.department_name,
+        color: person.department_color ?? null,
+        sort_order: person.department_sort_order ?? null,
+      });
+    });
+    return Array.from(byId.values()).sort((left, right) => {
+      const order =
+        (left.sort_order ?? Number.MAX_SAFE_INTEGER) -
+        (right.sort_order ?? Number.MAX_SAFE_INTEGER);
+      return order || left.name.localeCompare(right.name);
+    });
+  }, [people, workspaceDepartments]);
+
+  const departmentColorById = useMemo(
+    () => resolveUniqueDepartmentColors(departments),
+    [departments],
+  );
+
+  const personById = useMemo(
+    () => new Map(people.map((person) => [person.id, person])),
+    [people],
+  );
 
   const filteredEvents = useMemo(() => {
     const currentRangeEvents = calendarHasLoaded ? events : [];
@@ -443,30 +583,56 @@ export default function CalendarPage() {
         : sourceFilter === "room"
           ? currentRangeEvents.filter(isMeetingRoomEvent)
           : currentRangeEvents;
-    if (selectedUserIds.size === 0) return sourceEvents;
+    if (agendaScope === "all") return sourceEvents;
     return sourceEvents.filter((event) =>
       eventUserIds(event).some((id) => selectedUserIds.has(id)),
     );
-  }, [calendarHasLoaded, events, selectedUserIds, sourceFilter]);
+  }, [agendaScope, calendarHasLoaded, events, selectedUserIds, sourceFilter]);
 
   const filteredSharedAgendaEntries = useMemo(() => {
     const currentRangeEntries = calendarHasLoaded ? sharedAgendaEntries : [];
     if (sourceFilter === "upflow" || sourceFilter === "room") return [];
-    if (selectedUserIds.size === 0) return currentRangeEntries;
-    return currentRangeEntries.filter((entry) => selectedUserIds.has(entry.user.id));
-  }, [calendarHasLoaded, selectedUserIds, sharedAgendaEntries, sourceFilter]);
+    if (agendaScope === "all") return currentRangeEntries;
+    return currentRangeEntries.filter((entry) =>
+      selectedUserIds.has(entry.user.id),
+    );
+  }, [
+    agendaScope,
+    calendarHasLoaded,
+    selectedUserIds,
+    sharedAgendaEntries,
+    sourceFilter,
+  ]);
 
-  const eventUserTone = (event: CalendarEvent) => {
-    const ids = eventUserIds(event);
-    const selectedMatch = ids.find((id) => selectedUserIds.has(id));
-    const id = selectedMatch ?? ids[0];
-    return id ? userToneById.get(id) : null;
-  };
+  const eventDepartmentTone = useCallback(
+    (event: CalendarEvent) => {
+      const ids = eventUserIds(event);
+      const selectedMatch = ids.find((id) => selectedUserIds.has(id));
+      const id = selectedMatch ?? ids[0];
+      const departmentId = id ? personById.get(id)?.department_id : null;
+      return departmentColorTone(
+        departmentId ? departmentColorById.get(departmentId) : null,
+      );
+    },
+    [departmentColorById, personById, selectedUserIds],
+  );
 
-  const eventVisualClass = (event: CalendarEvent, display: ReturnType<typeof eventDisplayState>) => {
-    if (display.isComplete) return display.color;
-    if (isMeetingRoomEvent(event)) return ROOM_BOOKING_COLOR;
-    return eventUserTone(event)?.event ?? display.color;
+  const sharedAgendaTone = useCallback(
+    (entry: SharedGoogleAgendaEntry) => {
+      const departmentId = personById.get(entry.user.id)?.department_id;
+      return departmentColorTone(
+        departmentId ? departmentColorById.get(departmentId) : null,
+      );
+    },
+    [departmentColorById, personById],
+  );
+
+  const eventVisualClass = (
+    event: CalendarEvent,
+    display: ReturnType<typeof eventDisplayState>,
+  ) => {
+    if (display.isCancelled) return display.color;
+    return eventDepartmentTone(event).event;
   };
 
   const eventsByDay = useMemo(() => {
@@ -483,8 +649,16 @@ export default function CalendarPage() {
     filteredSharedAgendaEntries.forEach((entry) => {
       const startsAt = new Date(entry.starts_at);
       const endsAt = new Date(entry.ends_at);
-      const firstDay = new Date(startsAt.getFullYear(), startsAt.getMonth(), startsAt.getDate());
-      const lastDay = new Date(endsAt.getFullYear(), endsAt.getMonth(), endsAt.getDate());
+      const firstDay = new Date(
+        startsAt.getFullYear(),
+        startsAt.getMonth(),
+        startsAt.getDate(),
+      );
+      const lastDay = new Date(
+        endsAt.getFullYear(),
+        endsAt.getMonth(),
+        endsAt.getDate(),
+      );
 
       for (let day = firstDay; day <= lastDay; day.setDate(day.getDate() + 1)) {
         if (!agendaEntryOccursOnDay(entry, day)) continue;
@@ -495,31 +669,119 @@ export default function CalendarPage() {
     return map;
   }, [filteredSharedAgendaEntries]);
 
-  const selectedKey = dateKey(selected);
-  const selectedTasks = tasksByDay.get(selectedKey) ?? [];
-  const selectedScheduleItems = useMemo<SelectedScheduleItem[]>(
-    () => {
-      const dayEvents = eventsByDay.get(selectedKey) ?? [];
-      const daySharedAgendaEntries = sharedAgendaByDay.get(selectedKey) ?? [];
-      return [
-        ...dayEvents.map((event) => ({ source: "upflow" as const, startsAt: event.starts_at, event })),
-        ...daySharedAgendaEntries.map((entry) => ({ source: "google" as const, startsAt: entry.starts_at, entry })),
-      ].sort((left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime());
-    },
-    [eventsByDay, selectedKey, sharedAgendaByDay],
+  const timelineItems = useMemo<CalendarTimelineItem[]>(
+    () => [
+      ...filteredEvents.map((event) => {
+        const display = eventDisplayState(event, today);
+        return {
+          id: event.id,
+          startsAt: event.starts_at,
+          endsAt: event.ends_at,
+          allDay: false,
+          title: event.title,
+          source: "upflow" as const,
+          sourceLabel: isMeetingRoomEvent(event)
+            ? t("calendar.sourceRoom")
+            : t("calendar.sourceUpflow"),
+          colorRgb: eventDepartmentTone(event).rgb,
+          complete: display.isComplete,
+          cancelled: display.isCancelled,
+        };
+      }),
+      ...filteredSharedAgendaEntries.map((entry) => ({
+        id: entry.id,
+        startsAt: entry.starts_at,
+        endsAt: entry.ends_at,
+        allDay: entry.all_day,
+        title: entry.is_private ? t("calendar.sharedAgendaBusy") : entry.title,
+        source: "google" as const,
+        sourceLabel: t("calendar.sourceGoogle"),
+        colorRgb: sharedAgendaTone(entry).rgb,
+        readOnly: true,
+      })),
+    ],
+    [
+      eventDepartmentTone,
+      filteredEvents,
+      filteredSharedAgendaEntries,
+      sharedAgendaTone,
+      t,
+      today,
+    ],
   );
+
+  const selectedKey = dateKey(selected);
+  const selectedScheduleItems = useMemo<SelectedScheduleItem[]>(() => {
+    const dayEvents = eventsByDay.get(selectedKey) ?? [];
+    const daySharedAgendaEntries = sharedAgendaByDay.get(selectedKey) ?? [];
+    return [
+      ...dayEvents.map((event) => ({
+        source: "upflow" as const,
+        startsAt: event.starts_at,
+        event,
+      })),
+      ...daySharedAgendaEntries.map((entry) => ({
+        source: "google" as const,
+        startsAt: entry.starts_at,
+        entry,
+      })),
+    ].sort(
+      (left, right) =>
+        new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime(),
+    );
+  }, [eventsByDay, selectedKey, sharedAgendaByDay]);
   const selectedIsToday = isSameDay(selected, today);
-  const monthTitle = new Intl.DateTimeFormat(language, {
+  const formattedMonthTitle = new Intl.DateTimeFormat(language, {
     month: "long",
     year: "numeric",
   }).format(cursor);
-  const selectedPerson = useMemo(
-    () => people.find((person) => person.id === selectedUserId) ?? null,
-    [people, selectedUserId],
-  );
+  const monthTitle =
+    viewMode === "month"
+      ? capitalizeCalendarLabel(formattedMonthTitle, language)
+      : calendarRangeTitle(timelineDays, language);
+  const agendaDescription = useMemo(() => {
+    if (agendaScope === "me") return t("calendar.myScheduleDescription");
+    if (agendaScope === "all") return t("calendar.allSchedulesDescription");
+    if (agendaScope.startsWith("department:")) {
+      const department = departments.find(
+        (item) => `department:${item.id}` === agendaScope,
+      );
+      return department
+        ? t("calendar.departmentScheduleDescription", { name: department.name })
+        : t("calendar.allSchedulesDescription");
+    }
+    const person = people.find((item) => `user:${item.id}` === agendaScope);
+    return person
+      ? t("calendar.memberScheduleDescription", {
+          name: person.name || person.email,
+        })
+      : t("calendar.myScheduleDescription");
+  }, [agendaScope, departments, people, t]);
 
-  const goPrev = () => setCursor(new Date(year, month - 1, 1));
-  const goNext = () => setCursor(new Date(year, month + 1, 1));
+  const navigateTimeline = (amount: number) => {
+    const interval = viewMode === "week" ? 7 : viewMode === "fourDays" ? 4 : 1;
+    const next = addCalendarDays(selected, amount * interval);
+    setSelected(next);
+    setCursor(new Date(next.getFullYear(), next.getMonth(), 1));
+  };
+  const goPrev = () => {
+    if (viewMode !== "month") {
+      navigateTimeline(-1);
+      return;
+    }
+    const next = new Date(year, month - 1, 1);
+    setCursor(next);
+    setSelected(next);
+  };
+  const goNext = () => {
+    if (viewMode !== "month") {
+      navigateTimeline(1);
+      return;
+    }
+    const next = new Date(year, month + 1, 1);
+    setCursor(next);
+    setSelected(next);
+  };
   const goToday = () => {
     const now = new Date();
     setToday(now);
@@ -527,145 +789,26 @@ export default function CalendarPage() {
     setSelected(now);
   };
 
-  const openSchedule = (type: "meeting" | "reminder") => {
-    setQuickCreateOpen(false);
-    setScheduleType(type);
-    setScheduleDefaults(null);
-    setShowSchedule(true);
-  };
-
-  const openTaskDialog = () => {
-    setQuickCreateOpen(false);
-    setShowNewTask(true);
-  };
-
-  const deleteEvent = async (event: CalendarEvent) => {
-    setEventMenu(null);
-    if (!confirm(t("calendar.deleteConfirm", { title: event.title }))) return;
-    try {
-      const res = await fetch(`/api/calendar/events/${event.id}`, { method: "DELETE" });
-      if (res.status === 403) {
-        toast.error(t("calendar.noPermission"));
-        return;
-      }
-      if (!res.ok) throw new Error("Failed to delete event");
-      setEvents((prev) => prev.filter((item) => item.id !== event.id));
-      toast.success(t("calendar.eventDeleted"));
-    } catch {
-      toast.error(t("calendar.couldNotDelete"));
-    }
-  };
-
-  const updateEventColor = async (event: CalendarEvent, color: string | null) => {
-    setEventMenu(null);
-    try {
-      const res = await fetch(`/api/calendar/events/${event.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ color }),
-      });
-      if (res.status === 403) {
-        toast.error(t("calendar.noPermission"));
-        return;
-      }
-      if (!res.ok) throw new Error("Failed to update event");
-      const updated = (await res.json()) as CalendarEvent;
-      setEvents((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
-      toast.success(color === COMPLETED_EVENT_COLOR ? t("calendar.eventCompleted") : t("calendar.eventUpdated"));
-    } catch {
-      toast.error(t("calendar.couldNotUpdate"));
-    }
-  };
-
-  const rescheduleEvent = async (event: CalendarEvent, targetDate: Date) => {
-    if (dateKey(event.starts_at) === dateKey(targetDate)) {
-      setSelected(targetDate);
-      return;
-    }
-
-    const originalStart = new Date(event.starts_at);
-    const originalEnd = event.ends_at ? new Date(event.ends_at) : null;
-    const startsAt = mergeAppDateAndTime(targetDate, appTimeInputValue(event.starts_at));
-    const endsAt = originalEnd
-      ? new Date(startsAt.getTime() + (originalEnd.getTime() - originalStart.getTime()))
-      : null;
-
-    try {
-      const res = await fetch(`/api/calendar/events/${event.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          starts_at: startsAt.toISOString(),
-          ends_at: endsAt?.toISOString() ?? null,
-        }),
-      });
-      if (res.status === 403) {
-        toast.error(t("calendar.noPermission"));
-        return;
-      }
-      if (!res.ok) throw new Error("Failed to reschedule event");
-
-      const updated = (await res.json()) as CalendarEvent;
-      setEvents((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
-      setSelected(targetDate);
-      toast.success(t("calendar.eventRescheduled"));
-    } catch {
-      toast.error(t("calendar.couldNotReschedule"));
-    }
-  };
-
-  const startEventDrag = (event: CalendarEvent, dragEvent: React.DragEvent<HTMLDivElement>) => {
-    dragEvent.stopPropagation();
-    draggedEventIdRef.current = event.id;
-    dragEvent.dataTransfer.effectAllowed = "move";
-    dragEvent.dataTransfer.setData("text/plain", event.id);
-    setEventMenu(null);
-    setDraggedEventId(event.id);
-  };
-
-  const endEventDrag = () => {
-    draggedEventIdRef.current = null;
-    setDraggedEventId(null);
-    setDragOverDateKey(null);
-  };
-
-  const allowEventDrop = (dragEvent: React.DragEvent<HTMLButtonElement>, targetKey: string) => {
-    if (!draggedEventIdRef.current) return;
-    dragEvent.preventDefault();
-    dragEvent.dataTransfer.dropEffect = "move";
-    setDragOverDateKey(targetKey);
-  };
-
-  const dropEventOnDate = (dragEvent: React.DragEvent<HTMLButtonElement>, targetDate: Date) => {
-    const eventId = dragEvent.dataTransfer.getData("text/plain") || draggedEventIdRef.current;
-    dragEvent.preventDefault();
-    dragEvent.stopPropagation();
-    setDragOverDateKey(null);
-
-    if (!eventId) return;
-    const event = events.find((item) => item.id === eventId);
-    if (event) void rescheduleEvent(event, targetDate);
-  };
-
-  const openEventMenu = (event: CalendarEvent, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setEventMenu({ event, x: e.clientX, y: e.clientY });
-  };
-
   return (
     <>
       <Header title={t("calendar.title")} />
-      <div className="grid grid-cols-1 gap-4 p-4 sm:gap-6 sm:p-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <details className="group min-w-0 lg:col-span-2" data-testid="calendar-source-settings">
+      <div className="grid grid-cols-1 gap-4 p-4 sm:gap-6 sm:p-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <details
+          className="group min-w-0 xl:col-span-2"
+          data-testid="calendar-source-settings"
+        >
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3 text-left transition hover:bg-accent dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.06] [&::-webkit-details-marker]:hidden">
             <span className="flex min-w-0 items-center gap-3">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-primary/25 bg-primary/10 text-primary">
                 <Cloud className="h-4 w-4" />
               </span>
               <span className="min-w-0">
-                <span className="block text-sm font-semibold text-foreground">{t("calendar.sources")}</span>
-                <span className="block truncate text-xs text-muted-foreground">{t("calendar.sourcesDescription")}</span>
+                <span className="block text-sm font-semibold text-foreground">
+                  {t("calendar.sources")}
+                </span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {t("calendar.sourcesDescription")}
+                </span>
               </span>
             </span>
             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
@@ -673,67 +816,81 @@ export default function CalendarPage() {
           <GoogleCalendarIntegrationCard className="mt-3" />
         </details>
 
-        <section className="min-w-0 rounded-2xl p-4 glass sm:p-5" data-testid="unified-calendar">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
+        <section
+          className="min-w-0 rounded-2xl p-4 glass sm:p-5"
+          data-testid="unified-calendar"
+        >
+          <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0 flex-1">
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
                 {t("calendar.unifiedSchedule")}
               </p>
-              <h3 className="mt-1 text-lg font-semibold text-foreground">{monthTitle}</h3>
-              <p className="mt-1 text-xs text-muted-foreground">{t("calendar.unifiedScheduleDescription")}</p>
+              <h3 className="mt-1 text-lg font-semibold text-foreground">
+                {monthTitle}
+              </h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("calendar.unifiedScheduleDescription")}
+              </p>
             </div>
-            <div className="flex flex-wrap items-center gap-1">
-              <div className="inline-flex rounded-lg border border-border bg-muted/30 p-0.5 dark:border-white/10 dark:bg-white/5">
-                <button
-                  type="button"
-                  onClick={() => setManageEvents(false)}
-                  className={cn(
-                    "px-3 py-1 text-xs rounded-md transition-colors",
-                    !manageEvents ? "bg-accent text-foreground dark:bg-white/10" : "text-muted-foreground hover:text-foreground",
-                  )}
+            <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap sm:pt-1">
+              <label
+                className="relative shrink-0"
+                data-testid="calendar-view-selector"
+              >
+                <span className="sr-only">{t("calendar.viewMode")}</span>
+                <select
+                  value={viewMode}
+                  onChange={(event) =>
+                    setViewMode(event.target.value as CalendarViewMode)
+                  }
+                  className="h-9 appearance-none rounded-xl border border-border bg-muted/35 py-0 pl-3 pr-8 text-xs font-semibold text-foreground outline-none transition hover:bg-accent focus:border-primary/50 focus:ring-2 focus:ring-primary/20 dark:border-white/10 dark:bg-white/[0.04]"
                 >
-                  {t("calendar.view")}
+                  <option value="day">{t("calendar.viewDay")}</option>
+                  <option value="fourDays">{t("calendar.viewFourDays")}</option>
+                  <option value="week">{t("calendar.viewWeek")}</option>
+                  <option value="month">{t("calendar.viewMonth")}</option>
+                </select>
+                <ChevronDown className="upflow-select-chevron pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              </label>
+              <div
+                className="shrink-0"
+                data-testid="calendar-create-control"
+              >
+                <CreateActionButton
+                  onClick={() => setManualCreateOpen(true)}
+                  aria-haspopup="dialog"
+                  aria-label={t("calendar.quickCreate")}
+                  title={t("calendar.quickCreate")}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>{t("calendar.quickCreateShort")}</span>
+                </CreateActionButton>
+              </div>
+              <div
+                data-testid="calendar-date-navigation"
+                className="inline-flex shrink-0 items-center gap-1"
+              >
+                <button
+                  onClick={goToday}
+                  className="h-9 rounded-xl bg-muted/50 px-3 text-xs font-semibold text-foreground transition-colors hover:bg-muted dark:bg-white/5 dark:hover:bg-white/10"
+                >
+                  {t("calendar.today")}
                 </button>
                 <button
-                  type="button"
-                  onClick={() => setManageEvents(true)}
-                  className={cn(
-                    "px-3 py-1 text-xs rounded-md transition-colors",
-                    manageEvents ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
-                  )}
+                  onClick={goPrev}
+                  aria-label={t("calendar.previousPeriod")}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-foreground dark:hover:bg-white/5"
                 >
-                  {t("calendar.manage")}
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={goNext}
+                  aria-label={t("calendar.nextPeriod")}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-foreground dark:hover:bg-white/5"
+                >
+                  <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
-              {manageEvents && (
-                <button
-                  onClick={() => openSchedule("reminder")}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  {t("calendar.newEvent")}
-                </button>
-              )}
-              <button
-                onClick={goToday}
-                className="rounded-lg bg-muted/50 px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-muted dark:bg-white/5 dark:hover:bg-white/10"
-              >
-                {t("calendar.today")}
-              </button>
-              <button
-                onClick={goPrev}
-                aria-label={t("calendar.previousMonth")}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground dark:hover:bg-white/5"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button
-                onClick={goNext}
-                aria-label={t("calendar.nextMonth")}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground dark:hover:bg-white/5"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
             </div>
           </div>
 
@@ -769,282 +926,319 @@ export default function CalendarPage() {
           )}
 
           <div className="mb-4 rounded-xl border border-border bg-muted/30 px-3 py-3 dark:border-white/10 dark:bg-white/[0.15]">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs font-semibold text-foreground">{t("calendar.sourceFilter")}</p>
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-foreground">
+                  {t("calendar.sourceFilter")}
+                </p>
                 <p className="text-[11px] text-muted-foreground">
                   {t("calendar.sourceFilterDescription")}
                 </p>
               </div>
               <div
+                data-testid="calendar-source-tabs"
                 role="group"
                 aria-label={t("calendar.sourceFilter")}
-                className="flex flex-wrap gap-1 rounded-lg border border-border bg-background/70 p-1 dark:border-white/10 dark:bg-[#080d1b]"
+                className="grid min-h-11 w-full shrink-0 grid-cols-4 gap-1 rounded-lg border border-border bg-background/70 p-1 dark:border-white/10 dark:bg-[#080d1b] xl:w-[30rem]"
               >
-                {([
-                  { value: "all" as const, label: t("calendar.sourceAll"), Icon: CalendarIcon },
-                  { value: "upflow" as const, label: t("calendar.sourceUpflow"), Icon: CheckSquare },
-                  { value: "google" as const, label: t("calendar.sourceGoogle"), Icon: Cloud },
-                  { value: "room" as const, label: t("calendar.sourceRoom"), Icon: DoorOpen },
-                ] as const).map(({ value, label, Icon }) => (
+                {(
+                  [
+                    {
+                      value: "all" as const,
+                      label: t("calendar.sourceAll"),
+                      Icon: CalendarDays,
+                    },
+                    {
+                      value: "upflow" as const,
+                      label: t("calendar.sourceUpflow"),
+                      Icon: Workflow,
+                    },
+                    {
+                      value: "google" as const,
+                      label: t("calendar.sourceGoogle"),
+                      Icon: Cloud,
+                    },
+                    {
+                      value: "room" as const,
+                      label: t("calendar.sourceRoom"),
+                      Icon: DoorOpen,
+                    },
+                  ] as const
+                ).map(({ value, label, Icon }) => (
                   <button
                     key={value}
                     type="button"
                     onClick={() => setSourceFilter(value)}
                     aria-pressed={sourceFilter === value}
                     className={cn(
-                      "inline-flex min-h-8 items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition",
+                      "inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded-md px-2 text-xs font-medium transition sm:px-2.5",
                       sourceFilter === value
                         ? "bg-primary text-primary-foreground shadow-sm"
                         : "text-muted-foreground hover:bg-accent hover:text-foreground dark:hover:bg-white/10",
                     )}
                   >
-                    <Icon className="h-3.5 w-3.5" />
-                    {label}
+                    <Icon
+                      aria-hidden="true"
+                      className="h-4 w-4 shrink-0 stroke-[1.75]"
+                    />
+                    <span className="whitespace-nowrap">{label}</span>
                   </button>
                 ))}
               </div>
             </div>
-            <div className="mt-3 flex flex-col gap-3 border-t border-border/70 pt-3 sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
+            <div className="mt-3 flex flex-col gap-3 border-t border-border/70 pt-3 xl:flex-row xl:items-center xl:justify-between dark:border-white/10">
               <div>
-                <p className="text-xs font-semibold text-foreground">{t("calendar.peopleFilter")}</p>
+                <p className="text-xs font-semibold text-foreground">
+                  {t("calendar.peopleFilter")}
+                </p>
                 <p className="text-[11px] text-muted-foreground">
-                  {selectedPerson ? selectedPerson.name || selectedPerson.email : t("calendar.peopleFilterAll")}
+                  {agendaDescription}
                 </p>
               </div>
               <label className="relative min-w-[220px]">
                 <span className="sr-only">{t("calendar.peopleFilter")}</span>
                 <select
-                  value={selectedUserId}
-                  onChange={(event) => setSelectedUserId(event.target.value)}
+                  value={agendaScope}
+                  onChange={(event) =>
+                    setAgendaScope(event.target.value as AgendaScope)
+                  }
                   disabled={peopleLoading}
                   className="h-10 w-full rounded-xl border border-border bg-background px-3 pr-9 text-xs font-medium text-foreground outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 disabled:opacity-50 dark:border-white/10 dark:bg-[#080d1b]"
                 >
-                  <option value="">
-                    {peopleLoading ? t("common.loading") : t("calendar.allSchedules")}
+                  <option value="me">
+                    {peopleLoading
+                      ? t("common.loading")
+                      : t("calendar.mySchedule")}
                   </option>
-                  {people.map((person) => (
-                    <option key={person.id} value={person.id}>
-                      {person.name || person.email}
-                    </option>
-                  ))}
+                  {departments.length > 0 && (
+                    <optgroup label={t("calendar.departmentGroup")}>
+                      {departments.map((department) => (
+                        <option
+                          key={department.id}
+                          value={`department:${department.id}`}
+                        >
+                          {t("calendar.departmentSchedule", {
+                            name: department.name,
+                          })}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <optgroup label={t("calendar.peopleGroup")}>
+                    {people.map((person) => (
+                      <option key={person.id} value={`user:${person.id}`}>
+                        {person.name || person.email}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <option value="all">{t("calendar.allSchedules")}</option>
                 </select>
               </label>
             </div>
             {!peopleLoading && people.length === 0 && (
-              <p className="mt-2 text-xs text-muted-foreground">{t("calendar.noUsersToFilter")}</p>
-            )}
-            {sharedAgendaUnavailable && sourceFilter !== "upflow" && sourceFilter !== "room" && !calendarIsLoading && (
-              <p role="alert" className="mt-2 text-xs text-upflow-warning">
-                {t("calendar.sharedAgendaUnavailable")}
+              <p className="mt-2 text-xs text-muted-foreground">
+                {t("calendar.noUsersToFilter")}
               </p>
             )}
+            {sharedAgendaUnavailable &&
+              sourceFilter !== "upflow" &&
+              sourceFilter !== "room" &&
+              !calendarIsLoading && (
+                <p role="alert" className="mt-2 text-xs text-upflow-warning">
+                  {t("calendar.sharedAgendaUnavailable")}
+                </p>
+              )}
           </div>
 
-          <div className="grid grid-cols-7 gap-1 text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-            {WEEKDAY_KEYS.map((dayKey) => (
-              <div key={dayKey} className="text-center py-1">{t(dayKey)}</div>
-            ))}
-          </div>
-
-          <div
-            aria-busy={calendarIsLoading}
-            aria-describedby={calendarIsLoading ? "calendar-loading-status" : undefined}
-            className="grid min-w-0 grid-cols-7 gap-1"
-          >
-            {days.map((day) => {
-              const inMonth = day.getMonth() === month;
-              const isToday = isSameDay(day, today);
-              const isSelected = isSameDay(day, selected);
-              const key = dateKey(day);
-              const dayTasks = tasksByDay.get(key) ?? [];
-              const dayEvents = eventsByDay.get(key) ?? [];
-              const daySharedAgendaEntries = sharedAgendaByDay.get(key) ?? [];
-              const totalDayItems = dayEvents.length + daySharedAgendaEntries.length + dayTasks.length;
-              const needsMoreIndicator = totalDayItems > DAY_CELL_VISIBLE_ITEM_LIMIT;
-              const visibleItemSlots = needsMoreIndicator ? DAY_CELL_VISIBLE_ITEM_LIMIT - 1 : DAY_CELL_VISIBLE_ITEM_LIMIT;
-              const visibleDayEvents = dayEvents.slice(0, visibleItemSlots);
-              const visibleDaySharedAgendaEntries = daySharedAgendaEntries.slice(
-                0,
-                Math.max(visibleItemSlots - visibleDayEvents.length, 0),
-              );
-              const visibleDayTasks = dayTasks.slice(
-                0,
-                Math.max(visibleItemSlots - visibleDayEvents.length - visibleDaySharedAgendaEntries.length, 0),
-              );
-              const hiddenDayItems = totalDayItems - visibleDayEvents.length - visibleDaySharedAgendaEntries.length - visibleDayTasks.length;
-              return (
-                <button
-                  key={key}
-                  onClick={() => setSelected(day)}
-                  onDragOver={(dragEvent) => allowEventDrop(dragEvent, key)}
-                  onDrop={(dragEvent) => dropEventOnDate(dragEvent, day)}
-                  className={cn(
-                    "flex h-24 min-h-24 flex-col items-start overflow-hidden rounded-lg border p-1 text-left transition-colors sm:h-32 sm:min-h-32 sm:p-1.5 xl:h-36 xl:min-h-36",
-                    isSelected ? "border-primary/60 bg-primary/10" : "border-transparent hover:bg-accent dark:hover:bg-white/5",
-                    draggedEventId && dragOverDateKey === key && "border-primary bg-primary/15 ring-2 ring-primary/30",
-                    !inMonth && "opacity-40",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "shrink-0 text-xs font-medium",
-                      isToday
-                        ? "w-5 h-5 flex items-center justify-center rounded-full bg-primary text-primary-foreground"
-                        : "text-foreground",
-                    )}
-                  >
-                    {day.getDate()}
-                  </span>
-                  <div className="mt-1 hidden w-full space-y-0.5 overflow-hidden sm:block" data-calendar-day-items>
-                    {visibleDayEvents.map((event) => {
-                      const display = eventDisplayState(event, today);
-                      const isRoomBooking = isMeetingRoomEvent(event);
-
-                      return (
-                        <div
-                          key={event.id}
-                          draggable
-                          aria-label={`${event.title}. ${t("calendar.dragToReschedule")}`}
-                          title={`${eventTime(event)} ${event.title}${isRoomBooking ? ` - ${t("calendar.roomBooking")}` : ""}${display.isAutoComplete ? ` - ${t("calendar.autoCompleted")}` : ""}. ${t("calendar.dragToReschedule")}`}
-                          onDragStart={(dragEvent) => startEventDrag(event, dragEvent)}
-                          onDragEnd={endEventDrag}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelected(day);
-                            setEditingEvent(event);
-                          }}
-                          onContextMenu={(e) => openEventMenu(event, e)}
-                          onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            setEditingEvent(event);
-                          }}
-                          className={cn("min-h-[15px] cursor-grab truncate rounded border-l-2 px-1 py-0.5 text-[9px] leading-none active:cursor-grabbing", draggedEventId === event.id && "opacity-50", display.isCancelled && "opacity-60 line-through", eventVisualClass(event, display))}
-                        >
-                          {display.isComplete && <Check className="mr-0.5 inline h-2.5 w-2.5" />}
-                          {isRoomBooking && !display.isComplete && <DoorOpen className="mr-0.5 inline h-2.5 w-2.5" />}
-                          {eventTime(event)} {event.title}
-                        </div>
-                      );
-                    })}
-                    {visibleDaySharedAgendaEntries.map((entry) => (
-                      <div
-                        key={entry.id}
-                        title={`${entry.all_day ? t("calendar.sharedAgendaAllDay") : formatTime(entry.starts_at)} ${entry.is_private ? t("calendar.sharedAgendaBusy") : entry.title}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setSelected(day);
-                        }}
-                        className="min-h-[15px] truncate rounded border-l-2 border-l-primary bg-primary/10 px-1 py-0.5 text-[9px] leading-none text-foreground"
-                      >
-                        <Cloud className="mr-0.5 inline h-2.5 w-2.5 text-primary" />
-                        {entry.all_day ? t("calendar.sharedAgendaAllDay") : formatTime(entry.starts_at)} {entry.is_private ? t("calendar.sharedAgendaBusy") : entry.title}
-                      </div>
-                    ))}
-                    {visibleDayTasks.map((task) => (
-                      <div
-                        key={task.id}
-                        title={task.title}
-                        className={cn("min-h-[15px] truncate rounded border-l-2 px-1 py-0.5 text-[9px] leading-none", taskColor[task.priority])}
-                      >
-                        {task.title}
-                      </div>
-                    ))}
-                    {hiddenDayItems > 0 && (
-                      <div className="rounded bg-muted px-1 py-0.5 text-[9px] font-medium leading-none text-muted-foreground dark:bg-white/5">
-                        {t("calendar.more", { count: hiddenDayItems })}
-                      </div>
-                    )}
+          {viewMode === "month" ? (
+            <>
+              <div className="mb-1 grid grid-cols-7 gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                {WEEKDAY_KEYS.map((dayKey) => (
+                  <div key={dayKey} className="py-1 text-center">
+                    {t(dayKey)}
                   </div>
-                </button>
-              );
-            })}
-          </div>
+                ))}
+              </div>
+
+              <div
+                aria-busy={calendarIsLoading}
+                aria-describedby={
+                  calendarIsLoading ? "calendar-loading-status" : undefined
+                }
+                className="grid min-w-0 grid-cols-7 gap-1"
+              >
+                {days.map((day) => {
+                  const inMonth = day.getMonth() === month;
+                  const isToday = isSameDay(day, today);
+                  const isSelected = isSameDay(day, selected);
+                  const key = dateKey(day);
+                  const dayEvents = eventsByDay.get(key) ?? [];
+                  const daySharedAgendaEntries =
+                    sharedAgendaByDay.get(key) ?? [];
+                  const totalDayItems =
+                    dayEvents.length + daySharedAgendaEntries.length;
+                  const needsMoreIndicator =
+                    totalDayItems > DAY_CELL_VISIBLE_ITEM_LIMIT;
+                  const visibleItemSlots = needsMoreIndicator
+                    ? DAY_CELL_VISIBLE_ITEM_LIMIT - 1
+                    : DAY_CELL_VISIBLE_ITEM_LIMIT;
+                  const visibleDayEvents = dayEvents.slice(0, visibleItemSlots);
+                  const visibleDaySharedAgendaEntries =
+                    daySharedAgendaEntries.slice(
+                      0,
+                      Math.max(visibleItemSlots - visibleDayEvents.length, 0),
+                    );
+                  const hiddenDayItems =
+                    totalDayItems -
+                    visibleDayEvents.length -
+                    visibleDaySharedAgendaEntries.length;
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setSelected(day)}
+                      className={cn(
+                        "flex h-24 min-h-24 flex-col items-start overflow-hidden rounded-lg border p-1 text-left transition-colors sm:h-32 sm:min-h-32 sm:p-1.5 xl:h-36 xl:min-h-36",
+                        isSelected
+                          ? "border-primary/60 bg-primary/10"
+                          : "border-transparent hover:bg-accent dark:hover:bg-white/5",
+                        !inMonth && "opacity-40",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "shrink-0 text-xs font-medium",
+                          isToday
+                            ? "w-5 h-5 flex items-center justify-center rounded-full bg-primary text-primary-foreground"
+                            : "text-foreground",
+                        )}
+                      >
+                        {day.getDate()}
+                      </span>
+                      <div
+                        className="mt-1 hidden w-full space-y-0.5 overflow-hidden sm:block"
+                        data-calendar-day-items
+                      >
+                        {visibleDayEvents.map((event) => {
+                          const display = eventDisplayState(event, today);
+                          const isRoomBooking = isMeetingRoomEvent(event);
+
+                          return (
+                            <div
+                              key={event.id}
+                              title={`${eventTime(event, language)} ${event.title}${isRoomBooking ? ` - ${t("calendar.roomBooking")}` : ""}${display.isAutoComplete ? ` - ${t("calendar.autoCompleted")}` : ""}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelected(day);
+                                setEditingEvent(event);
+                              }}
+                              className={cn(
+                                "min-h-[15px] cursor-pointer truncate rounded border-l-2 px-1 py-0.5 text-[9px] leading-none",
+                                display.isCancelled &&
+                                  "opacity-60 line-through",
+                                eventVisualClass(event, display),
+                              )}
+                            >
+                              {display.isComplete && (
+                                <Check className="mr-0.5 inline h-2.5 w-2.5" />
+                              )}
+                              {isRoomBooking && !display.isComplete && (
+                                <DoorOpen className="mr-0.5 inline h-2.5 w-2.5" />
+                              )}
+                              {eventTime(event, language)} {event.title}
+                            </div>
+                          );
+                        })}
+                        {visibleDaySharedAgendaEntries.map((entry) => {
+                          const tone = sharedAgendaTone(entry);
+                          return (
+                            <div
+                              key={entry.id}
+                              title={`${entry.all_day ? t("calendar.sharedAgendaAllDay") : formatTime(entry.starts_at, language)} ${entry.is_private ? t("calendar.sharedAgendaBusy") : entry.title}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setSelected(day);
+                              }}
+                              className={cn(
+                                "min-h-[15px] truncate rounded border-l-2 px-1 py-0.5 text-[9px] leading-none",
+                                tone.event,
+                              )}
+                            >
+                              <Cloud className="mr-0.5 inline h-2.5 w-2.5" />
+                              {entry.all_day
+                                ? t("calendar.sharedAgendaAllDay")
+                                : formatTime(entry.starts_at, language)}{" "}
+                              {entry.is_private
+                                ? t("calendar.sharedAgendaBusy")
+                                : entry.title}
+                            </div>
+                          );
+                        })}
+                        {hiddenDayItems > 0 && (
+                          <div className="rounded bg-muted px-1 py-0.5 text-[9px] font-medium leading-none text-muted-foreground dark:bg-white/5">
+                            {t("calendar.more", { count: hiddenDayItems })}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <CalendarTimeGrid
+              days={timelineDays}
+              items={timelineItems}
+              language={language}
+              today={today}
+              allDayLabel={t("calendar.allDay")}
+              emptyLabel={t("calendar.noSchedule")}
+              onSelectDay={(day) => {
+                setSelected(day);
+                setCursor(new Date(day.getFullYear(), day.getMonth(), 1));
+              }}
+              onOpenItem={(item) => {
+                const itemDate = new Date(item.startsAt);
+                setSelected(itemDate);
+                setCursor(
+                  new Date(itemDate.getFullYear(), itemDate.getMonth(), 1),
+                );
+                if (item.source === "upflow") {
+                  const event = events.find(
+                    (candidate) => candidate.id === item.id,
+                  );
+                  if (event) setEditingEvent(event);
+                }
+              }}
+            />
+          )}
         </section>
 
         <aside className="min-w-0 space-y-4">
-          <div className="rounded-2xl p-4 glass sm:p-5">
+          <div className="rounded-2xl p-3 glass sm:p-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
                   {selectedIsToday ? t("calendar.today") : t("common.selected")}
                 </p>
-                <h3 className="mt-1 text-lg font-semibold text-foreground">
-                  {formatLongDate(selected)}
+                <h3 className="mt-0.5 text-base font-semibold leading-snug text-foreground">
+                  {formatLongDate(selected, language)}
                 </h3>
               </div>
-              <div className="relative shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setQuickCreateOpen((value) => !value)}
-                  aria-expanded={quickCreateOpen}
-                  aria-label={t("calendar.quickCreate")}
-                  title={t("calendar.quickCreate")}
-                  className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-blue-300/25 bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-[0_0_24px_rgba(59,130,246,0.28)] transition hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/50"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>{t("calendar.quickCreateShort")}</span>
-                </button>
-                {quickCreateOpen && (
-                  <div className="absolute right-0 top-11 z-20 w-48 overflow-hidden rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-xl dark:border-white/10 dark:bg-[#070b18]/95 dark:shadow-[0_20px_50px_rgba(0,0,0,0.45)]">
-                    <button
-                      type="button"
-                      onClick={() => openSchedule("meeting")}
-                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-foreground transition hover:bg-accent dark:hover:bg-white/10"
-                    >
-                      <Video className="h-3.5 w-3.5 text-upflow-success" />
-                      {t("calendar.quickMeeting")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openSchedule("reminder")}
-                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-foreground transition hover:bg-accent dark:hover:bg-white/10"
-                    >
-                      <Bell className="h-3.5 w-3.5 text-primary" />
-                      {t("calendar.quickEvent")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={openTaskDialog}
-                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-foreground transition hover:bg-accent dark:hover:bg-white/10"
-                    >
-                      <CheckSquare className="h-3.5 w-3.5 text-upflow-warning" />
-                      {t("calendar.quickTask")}
-                    </button>
-                  </div>
-                )}
-              </div>
             </div>
-            {manageEvents && (
-              <button
-                type="button"
-                onClick={() => openSchedule("reminder")}
-                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                {t("calendar.newEventDate")}
-              </button>
-            )}
 
-            <div className="mt-4">
-              <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">
+            <div className="mt-3">
+              <p className="mb-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
                 {t("calendar.daySchedule")}
               </p>
               {calendarIsLoading ? (
-                <p className="text-xs text-muted-foreground">{t("common.loading")}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t("common.loading")}
+                </p>
               ) : selectedScheduleItems.length === 0 ? (
                 <div className="rounded-lg border border-border bg-muted/30 px-3 py-4 text-center dark:border-white/5 dark:bg-white/[0.15]">
-                  <p className="text-xs text-muted-foreground">{t("calendar.noSchedule")}</p>
-                  {manageEvents && (
-                    <button
-                      type="button"
-                      onClick={() => openSchedule("reminder")}
-                      className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      {t("calendar.addEvent")}
-                    </button>
-                  )}
+                  <p className="text-xs text-muted-foreground">
+                    {t("calendar.noSchedule")}
+                  </p>
                 </div>
               ) : (
                 <ul className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
@@ -1055,19 +1249,36 @@ export default function CalendarPage() {
                         <li
                           key={`google-${entry.id}`}
                           title={t("calendar.googleReadOnly")}
-                          className="flex items-start gap-2 rounded-lg border border-primary/15 bg-primary/5 px-3 py-2"
+                          className="flex items-start gap-2 rounded-lg border border-primary/15 bg-primary/5 px-2.5 py-2"
                         >
-                          <Cloud className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                          <Cloud className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                           <div className="min-w-0 flex-1">
-                            <div className="flex min-w-0 items-center gap-1.5">
-                              <p className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
-                                {entry.all_day ? t("calendar.sharedAgendaAllDay") : formatTime(entry.starts_at)} {entry.is_private ? t("calendar.sharedAgendaBusy") : entry.title}
-                              </p>
+                            <p
+                              data-testid="selected-day-event-title"
+                              className="break-words text-sm font-semibold leading-snug text-foreground"
+                            >
+                              {entry.is_private
+                                ? t("calendar.sharedAgendaBusy")
+                                : entry.title}
+                            </p>
+                            <div
+                              data-testid="selected-day-event-meta"
+                              className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1"
+                            >
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                                <Clock
+                                  aria-hidden="true"
+                                  className="h-3.5 w-3.5"
+                                />
+                                {entry.all_day
+                                  ? t("calendar.sharedAgendaAllDay")
+                                  : formatTime(entry.starts_at, language)}
+                              </span>
                               <span className="shrink-0 rounded-full border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary">
                                 {t("calendar.sourceGoogle")}
                               </span>
                             </div>
-                            <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                            <p className="mt-1 line-clamp-2 break-words text-[10px] text-muted-foreground">
                               {entry.user.name || entry.user.email}
                             </p>
                           </div>
@@ -1077,124 +1288,87 @@ export default function CalendarPage() {
 
                     const { event } = item;
                     const display = eventDisplayState(event, today);
-                    const tone = eventUserTone(event);
+                    const tone = eventDepartmentTone(event);
                     const isRoomBooking = isMeetingRoomEvent(event);
 
                     return (
                       <li
                         key={event.id}
-                        title={display.isAutoComplete ? t("calendar.autoCompleted") : undefined}
+                        title={
+                          display.isAutoComplete
+                            ? t("calendar.autoCompleted")
+                            : undefined
+                        }
                         onClick={() => setEditingEvent(event)}
-                        onContextMenu={(e) => openEventMenu(event, e)}
-                        onDoubleClick={() => setEditingEvent(event)}
                         className={cn(
-                          "group flex cursor-pointer items-center gap-2 rounded-lg border-l-2 px-3 py-2 transition-colors hover:bg-accent dark:hover:bg-white/5",
+                          "group flex cursor-pointer items-start gap-2 rounded-lg border-l-2 px-2.5 py-2 transition-colors hover:bg-accent dark:hover:bg-white/5",
                           eventVisualClass(event, display),
                           display.isCancelled && "opacity-60 line-through",
                         )}
                       >
-                        {isRoomBooking && !display.isComplete ? (
-                          <DoorOpen className="h-3.5 w-3.5 shrink-0 text-cyan-100" />
-                        ) : tone && !display.isComplete && (
-                          <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", tone.dot)} />
+                        {isRoomBooking ? (
+                          <DoorOpen className="mt-0.5 h-4 w-4 shrink-0" />
+                        ) : (
+                          <span
+                            className={cn(
+                              "mt-1 h-2.5 w-2.5 shrink-0 rounded-full",
+                              tone.dot,
+                            )}
+                          />
                         )}
-                        <div
-                          className={cn(
-                            "min-w-0 flex-1 text-left",
-                          )}
-                        >
-                          <div className="flex min-w-0 items-center gap-1.5">
-                            <p className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
-                              {display.isComplete && <Check className="mr-1 inline h-3 w-3 text-upflow-success" />}
-                              {eventTime(event)} {event.title}
-                            </p>
-                            {isRoomBooking && (
-                              <span className="shrink-0 rounded-full border border-cyan-300/25 bg-cyan-400/10 px-1.5 py-0.5 text-[9px] font-semibold text-cyan-100">
-                                {t("calendar.roomBooking")}
-                              </span>
+                        <div className="min-w-0 flex-1 text-left">
+                          <p
+                            data-testid="selected-day-event-title"
+                            className="break-words text-sm font-semibold leading-snug text-foreground"
+                          >
+                            {display.isComplete && (
+                              <Check className="mr-1 inline h-3.5 w-3.5 text-upflow-success" />
                             )}
-                            {!isRoomBooking && (
-                              <span className="shrink-0 rounded-full border border-border bg-muted/30 px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground dark:border-white/10 dark:bg-white/5">
-                                {t("calendar.sourceUpflow")}
+                            {event.title}
+                          </p>
+                          <div className="mt-1 flex items-center gap-2">
+                            <div
+                              data-testid="selected-day-event-meta"
+                              className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"
+                            >
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                                <Clock
+                                  aria-hidden="true"
+                                  className="h-3.5 w-3.5"
+                                />
+                                {eventTime(event, language)}
                               </span>
-                            )}
+                              {isRoomBooking && (
+                                <span className="shrink-0 rounded-full border border-cyan-300/25 bg-cyan-400/10 px-1.5 py-0.5 text-[9px] font-semibold text-cyan-100">
+                                  {t("calendar.roomBooking")}
+                                </span>
+                              )}
+                              {!isRoomBooking && (
+                                <span className="shrink-0 rounded-full border border-border bg-muted/30 px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground dark:border-white/10 dark:bg-white/5">
+                                  {t("calendar.sourceUpflow")}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          {(event.location || event.meeting_url || event.description || display.isAutoComplete) && (
-                            <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                          {(event.location ||
+                            event.meeting_url ||
+                            event.description ||
+                            display.isAutoComplete) && (
+                            <p className="mt-1 line-clamp-2 break-words text-[10px] text-muted-foreground">
                               {isRoomBooking
-                                ? t("calendar.roomBookingDetail")
-                                : event.location || event.meeting_url || event.description || t("calendar.autoCompleted")}
+                                ? meetingRoomKeyFromLocation(event.location)
+                                  ? meetingRoomNameFromLocation(event.location)
+                                  : t("meetingRoom.unspecifiedRoom")
+                                : event.location ||
+                                  event.meeting_url ||
+                                  event.description ||
+                                  t("calendar.autoCompleted")}
                             </p>
                           )}
-                        </div>
-                        <div className="flex flex-shrink-0 items-center gap-1 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void updateEventColor(event, COMPLETED_EVENT_COLOR);
-                            }}
-                            aria-label={`${t("calendar.markComplete")} ${event.title}`}
-                            title={t("calendar.markComplete")}
-                            className="flex h-7 w-7 items-center justify-center rounded-md text-upflow-success hover:bg-upflow-success/10"
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingEvent(event);
-                            }}
-                            aria-label={`${t("calendar.editEvent")} ${event.title}`}
-                            title={t("calendar.editEvent")}
-                            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground dark:hover:bg-white/10"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void deleteEvent(event);
-                            }}
-                            aria-label={`${t("common.delete")} ${event.title}`}
-                            title={t("common.delete")}
-                            className="flex h-7 w-7 items-center justify-center rounded-md text-upflow-danger hover:bg-upflow-danger/10"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
                         </div>
                       </li>
                     );
                   })}
-                </ul>
-              )}
-            </div>
-
-            <div className="mt-5 border-t border-border/60 pt-4 dark:border-white/5">
-              <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">
-                {t("calendar.dueTasks")}
-              </p>
-              {calendarIsLoading ? (
-                <p className="text-xs text-muted-foreground">{t("common.loading")}</p>
-              ) : selectedTasks.length === 0 ? (
-                <p className="text-xs text-muted-foreground">{t("calendar.noDueTasks")}</p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {selectedTasks.map((task) => (
-                    <li key={task.id}>
-                      <Link
-                        href={task.project ? `/projects/${task.project.id}` : "#"}
-                        className={cn("block rounded-lg border-l-2 px-3 py-2 transition-colors hover:bg-accent dark:hover:bg-white/5", taskColor[task.priority])}
-                      >
-                        <p className="text-xs font-medium text-foreground truncate">{task.title}</p>
-                        {task.project?.name && (
-                          <p className="text-[10px] text-muted-foreground mt-0.5">{task.project.name}</p>
-                        )}
-                      </Link>
-                    </li>
-                  ))}
                 </ul>
               )}
             </div>
@@ -1204,40 +1378,54 @@ export default function CalendarPage() {
             <div className="flex items-center gap-2 mb-2">
               <CalendarIcon className="w-4 h-4 text-muted-foreground" />
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                {t("calendar.legend")}
+                {t("calendar.legendDepartments")}
               </p>
             </div>
             <ul className="text-xs space-y-1.5">
+              {departments.map((department) => {
+                const tone = departmentColorTone(
+                  departmentColorById.get(department.id),
+                );
+
+                return (
+                  <li key={department.id} className="flex items-center gap-2">
+                    <span
+                      aria-hidden="true"
+                      className="h-3 w-3 shrink-0 rounded-full"
+                      style={{ backgroundColor: `rgb(${tone.rgb})` }}
+                    />
+                    {department.name}
+                  </li>
+                );
+              })}
               <li className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded bg-primary/40 border-l-2 border-l-primary" />
-                {t("calendar.legendEvent")}
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="flex h-3 w-3 items-center justify-center rounded border border-primary/35 bg-primary/10 text-primary">
-                  <Cloud className="h-2 w-2" />
-                </span>
-                {t("calendar.legendGoogle")}
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded bg-cyan-400/40 border-l-2 border-l-cyan-400" />
-                {t("calendar.legendRoomBooking")}
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded bg-upflow-success/40 border-l-2 border-l-upflow-success" />
-                {t("calendar.legendCompletedEvent")}
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded bg-upflow-danger/40 border-l-2 border-l-upflow-danger" />
-                {t("calendar.legendHigh")}
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded bg-upflow-success/40 border-l-2 border-l-upflow-success" />
-                {t("calendar.legendLow")}
+                <span
+                  aria-hidden="true"
+                  className="h-3 w-3 shrink-0 rounded-full"
+                  style={{
+                    backgroundColor: `rgb(${departmentColorTone(null).rgb})`,
+                  }}
+                />
+                {t("calendar.legendNoDepartment")}
               </li>
             </ul>
+            <div className="mt-4 border-t border-border/60 pt-3 dark:border-white/5">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {t("calendar.legendSources")}
+              </p>
+              <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <Cloud className="h-3.5 w-3.5" />
+                  {t("calendar.sourceGoogle")}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <DoorOpen className="h-3.5 w-3.5" />
+                  {t("calendar.sourceRoom")}
+                </span>
+              </div>
+            </div>
           </div>
         </aside>
-
       </div>
 
       <ScheduleMeetingDialog
@@ -1257,99 +1445,50 @@ export default function CalendarPage() {
         defaultTitle={scheduleDefaults?.title}
         defaultDescription={scheduleDefaults?.description}
         defaultTaskId={scheduleDefaults?.taskId ?? null}
+        defaultOnboardingChecklistItemId={
+          scheduleDefaults?.onboardingChecklistItemId ?? null
+        }
         defaultProjectId={scheduleDefaults?.projectId ?? null}
         defaultAttendeeIds={scheduleDefaults?.attendeeIds ?? []}
         onScheduled={(event) => {
-          setEvents((prev) => [...prev, event].sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()));
+          setEvents((prev) =>
+            [...prev, event].sort(
+              (a, b) =>
+                new Date(a.starts_at).getTime() -
+                new Date(b.starts_at).getTime(),
+            ),
+          );
           setSelected(new Date(event.starts_at));
           setScheduleDefaults(null);
           loadCalendar();
         }}
       />
 
-      <TaskCreateSheet
-        open={showNewTask}
-        onClose={() => setShowNewTask(false)}
-        onCreated={() => {
-          setShowNewTask(false);
+      <GuidedCalendarCreateDialog
+        open={manualCreateOpen}
+        onClose={() => setManualCreateOpen(false)}
+        initialDate={selected}
+        people={people}
+        peopleLoading={peopleLoading}
+        creatorUserId={user?.id}
+        onScheduled={(event) => {
+          setEvents((previous) =>
+            [...previous, event].sort(
+              (left, right) =>
+                new Date(left.starts_at).getTime() -
+                new Date(right.starts_at).getTime(),
+            ),
+          );
+          setSelected(new Date(event.starts_at));
           loadCalendar();
         }}
-        defaultDueDate={appDateKey(selected)}
       />
 
       {editingEvent && (
         <EventEditorSheet
           event={editingEvent}
-          people={people}
           onClose={() => setEditingEvent(null)}
-          onChanged={(event) => {
-            setEvents((prev) => prev.map((item) => (item.id === event.id ? event : item)));
-            setEditingEvent(event);
-          }}
-          onDeleted={(id) => {
-            setEvents((prev) => prev.filter((item) => item.id !== id));
-            setEditingEvent(null);
-          }}
-          onDuplicated={(event) => {
-            setEvents((prev) => [...prev, event].sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()));
-            setEditingEvent(event);
-          }}
         />
-      )}
-
-      {eventMenu && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setEventMenu(null)}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            setEventMenu(null);
-          }}
-        >
-          <div
-            className="absolute w-56 overflow-hidden rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-xl dark:border-white/10 dark:bg-[#070b18]/95 dark:shadow-[0_20px_50px_rgba(0,0,0,0.45)]"
-            style={{
-              left: Math.min(eventMenu.x, window.innerWidth - 240),
-              top: Math.min(eventMenu.y, window.innerHeight - 280),
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setEditingEvent(eventMenu.event);
-                setEventMenu(null);
-              }}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-foreground transition hover:bg-accent dark:hover:bg-white/10"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-              {t("calendar.editEvent")}
-            </button>
-            <button
-              type="button"
-              onClick={() => void updateEventColor(eventMenu.event, COMPLETED_EVENT_COLOR)}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-upflow-success transition hover:bg-accent dark:hover:bg-white/10"
-            >
-              <Check className="h-3.5 w-3.5" />
-              {t("calendar.markComplete")}
-            </button>
-            <div className="my-1 border-t border-border dark:border-white/10" />
-            <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              {t("calendar.changeColor")}
-            </p>
-            {EVENT_COLOR_OPTIONS.map((option) => (
-              <button
-                key={option.key}
-                type="button"
-                onClick={() => void updateEventColor(eventMenu.event, option.color)}
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-foreground transition hover:bg-accent dark:hover:bg-white/10"
-              >
-                <span className={cn("h-3 w-3 rounded border-l-2", option.className)} />
-                {t(option.labelKey)}
-              </button>
-            ))}
-          </div>
-        </div>
       )}
     </>
   );

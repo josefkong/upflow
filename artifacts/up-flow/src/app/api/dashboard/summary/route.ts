@@ -7,7 +7,14 @@ import { buildPage, parsePagination } from "@/lib/pagination";
 import { startOfToday, startOfWeekMonday } from "@/lib/time-range";
 import { timeEntryDurationSeconds } from "@/lib/time-entry-duration";
 import { withErrorReporting } from "@/lib/with-error-reporting";
-import { attachTaskOnboardingLink, loadTaskOnboardingLinkMap } from "@/lib/task-onboarding-links";
+import {
+  attachTaskOnboardingLink,
+  loadTaskOnboardingLinkMap,
+} from "@/lib/task-onboarding-links";
+import {
+  canViewClientFinancials,
+  redactFinancialMetadata,
+} from "@/lib/client-financial-access";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +35,10 @@ async function GET_handler(req: NextRequest) {
   }
 
   const superAdmin = isSuperAdmin(auth);
+  const financialsVisible = await canViewClientFinancials(
+    auth,
+    auth.currentWorkspaceId,
+  );
   const { searchParams } = new URL(req.url);
   const { limit } = parsePagination(req, { defaultLimit: 80, maxLimit: 150 });
   const q = searchParams.get("q")?.trim();
@@ -174,7 +185,9 @@ async function GET_handler(req: NextRequest) {
       take: 10,
       orderBy: [{ created_at: "desc" }, { id: "asc" }],
       include: {
-        actor: { select: { id: true, name: true, email: true, avatar_url: true } },
+        actor: {
+          select: { id: true, name: true, email: true, avatar_url: true },
+        },
       },
     }),
     prisma.timeEntry.findFirst({
@@ -205,7 +218,11 @@ async function GET_handler(req: NextRequest) {
     prisma.task.findMany({
       where: workspaceOpenTaskWhere,
       take: 150,
-      orderBy: [{ due_date: "asc" }, { priority: "desc" }, { created_at: "desc" }],
+      orderBy: [
+        { due_date: "asc" },
+        { priority: "desc" },
+        { created_at: "desc" },
+      ],
       include: {
         assignee: { select: { id: true, name: true, email: true } },
         project: {
@@ -250,7 +267,10 @@ async function GET_handler(req: NextRequest) {
       select: { project_id: true },
     }),
     prisma.company.count({
-      where: { workspace_id: auth.currentWorkspaceId, status: { not: "archived" } },
+      where: {
+        workspace_id: auth.currentWorkspaceId,
+        status: { not: "archived" },
+      },
     }),
     prisma.company.aggregate({
       where: { workspace_id: auth.currentWorkspaceId },
@@ -272,7 +292,10 @@ async function GET_handler(req: NextRequest) {
       },
     }),
     prisma.company.findMany({
-      where: { workspace_id: auth.currentWorkspaceId, status: { not: "archived" } },
+      where: {
+        workspace_id: auth.currentWorkspaceId,
+        status: { not: "archived" },
+      },
       take: 100,
       orderBy: [{ updated_at: "desc" }, { id: "asc" }],
       select: {
@@ -386,7 +409,11 @@ async function GET_handler(req: NextRequest) {
       where: { ...workspaceOpenTaskWhere, due_date: { lt: todayStart } },
     }),
     prisma.project.count({
-      where: { workspace_id: auth.currentWorkspaceId, status: "active", due_date: null },
+      where: {
+        workspace_id: auth.currentWorkspaceId,
+        status: "active",
+        due_date: null,
+      },
     }),
   ]);
 
@@ -434,7 +461,7 @@ async function GET_handler(req: NextRequest) {
           _min: { due_date: true },
         }),
       ])
-    : [[], [], [], []] as const;
+    : ([[], [], [], []] as const);
 
   const activeProjectsByCompany = new Map(
     companyProjectStats.map((row) => [row.company_id, row._count._all]),
@@ -523,7 +550,6 @@ async function GET_handler(req: NextRequest) {
     };
   });
 
-
   const onboardingLinkByTaskId = await loadTaskOnboardingLinkMap([
     ...userTasks.map((task) => task.id),
     ...workspaceOpenTaskRows.map((task) => task.id),
@@ -545,24 +571,38 @@ async function GET_handler(req: NextRequest) {
   const todayTimeByUser = new Map<string, number>();
   for (const entry of todayTimeEntries) {
     const duration = timeEntryDurationSeconds(entry);
-    todayTimeByUser.set(entry.user_id, (todayTimeByUser.get(entry.user_id) ?? 0) + duration);
+    todayTimeByUser.set(
+      entry.user_id,
+      (todayTimeByUser.get(entry.user_id) ?? 0) + duration,
+    );
   }
 
   const openTaskCountByAssignee = new Map(
     openTaskCountsByAssignee.map((row) => [row.assignee_id, row._count._all]),
   );
   const overdueTaskCountByAssignee = new Map(
-    overdueTaskCountsByAssignee.map((row) => [row.assignee_id, row._count._all]),
+    overdueTaskCountsByAssignee.map((row) => [
+      row.assignee_id,
+      row._count._all,
+    ]),
   );
   const dueTodayTaskCountByAssignee = new Map(
-    dueTodayTaskCountsByAssignee.map((row) => [row.assignee_id, row._count._all]),
+    dueTodayTaskCountsByAssignee.map((row) => [
+      row.assignee_id,
+      row._count._all,
+    ]),
   );
   const upcomingTaskCountByAssignee = new Map(
-    upcomingTaskCountsByAssignee.map((row) => [row.assignee_id, row._count._all]),
+    upcomingTaskCountsByAssignee.map((row) => [
+      row.assignee_id,
+      row._count._all,
+    ]),
   );
 
   const workload = flattenedUsers.map((member) => {
-    const assignedOpenTasks = workspaceOpenTasks.filter((task) => task.assignee_id === member.id);
+    const assignedOpenTasks = workspaceOpenTasks.filter(
+      (task) => task.assignee_id === member.id,
+    );
     const openTaskCount = openTaskCountByAssignee.get(member.id) ?? 0;
     const overdueTaskCount = overdueTaskCountByAssignee.get(member.id) ?? 0;
     const dueTodayTaskCount = dueTodayTaskCountByAssignee.get(member.id) ?? 0;
@@ -597,15 +637,19 @@ async function GET_handler(req: NextRequest) {
     .map((project) => {
       const reasons: string[] = [];
       const overdue = overdueByProject.get(project.id) ?? 0;
-      if (overdue > 0) reasons.push(`${overdue} overdue open task${overdue === 1 ? "" : "s"}`);
+      if (overdue > 0)
+        reasons.push(`${overdue} overdue open task${overdue === 1 ? "" : "s"}`);
       if (!project.owner_id) reasons.push("No owner");
-      if (!recentProjectIds.has(project.id)) reasons.push("No activity in 7 days");
+      if (!recentProjectIds.has(project.id))
+        reasons.push("No activity in 7 days");
       return { project, reasons };
     })
     .filter((item) => item.reasons.length > 0)
     .slice(0, 10);
 
-  const todayEntriesForMe = todayTimeEntries.filter((entry) => entry.user_id === auth.prismaUser.id);
+  const todayEntriesForMe = todayTimeEntries.filter(
+    (entry) => entry.user_id === auth.prismaUser.id,
+  );
   const totalSecondsToday = todayEntriesForMe.reduce((sum, entry) => {
     return sum + timeEntryDurationSeconds(entry);
   }, 0);
@@ -630,10 +674,14 @@ async function GET_handler(req: NextRequest) {
     if (activeProjectCount === 0) reasons.push("No active client work");
     if (contactCount === 0) reasons.push("No contacts");
     if (overdueTaskCount > 0) {
-      reasons.push(`${overdueTaskCount} overdue deliverable${overdueTaskCount === 1 ? "" : "s"}`);
+      reasons.push(
+        `${overdueTaskCount} overdue deliverable${overdueTaskCount === 1 ? "" : "s"}`,
+      );
     }
     if (noRecentActivity) reasons.push("No activity in 7 days");
-    if (company.contract_value == null && missingPlan) reasons.push("No contract value or plan");
+    if (financialsVisible && company.contract_value == null && missingPlan) {
+      reasons.push("No contract value or plan");
+    }
 
     const health_status =
       activeProjectCount === 0 &&
@@ -654,8 +702,8 @@ async function GET_handler(req: NextRequest) {
         name: company.name,
         commercial_status: company.commercial_status,
         status: company.status,
-        contract_value: company.contract_value,
-        commission: company.commission,
+        contract_value: financialsVisible ? company.contract_value : null,
+        commission: financialsVisible ? company.commission : null,
         plan_name: company.plan_name,
         service_type: company.service_type,
         owner: company.owner,
@@ -678,7 +726,11 @@ async function GET_handler(req: NextRequest) {
     { healthy: 0, attention_needed: 0, at_risk: 0, not_enough_data: 0 },
   );
   const clientRiskItems = clientHealthItems
-    .filter((item) => item.health_status === "at_risk" || item.health_status === "attention_needed")
+    .filter(
+      (item) =>
+        item.health_status === "at_risk" ||
+        item.health_status === "attention_needed",
+    )
     .slice(0, 10);
   const deliveryOverview = deliveryProjects.map((project) => {
     const totalTasks = deliveryTaskTotalByProject.get(project.id) ?? 0;
@@ -687,10 +739,9 @@ async function GET_handler(req: NextRequest) {
     const overdue = deliveryOverdueTasksByProject.get(project.id) ?? 0;
     const taskDeadline = deliveryTaskDeadlineByProject.get(project.id) ?? null;
     const nextDeadline =
-      [
-        project.due_date,
-        taskDeadline,
-      ].filter((date): date is Date => Boolean(date)).sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
+      [project.due_date, taskDeadline]
+        .filter((date): date is Date => Boolean(date))
+        .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
     const state =
       overdue > 0
         ? "at_risk"
@@ -736,7 +787,10 @@ async function GET_handler(req: NextRequest) {
       task.description,
       task.project?.name,
       task.project?.space?.name,
-    ].filter(Boolean).join(" ").toLowerCase();
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
     return creativeKeywords.some((keyword) => haystack.includes(keyword));
   });
   const creativeQueue = {
@@ -744,8 +798,25 @@ async function GET_handler(req: NextRequest) {
       "Uses real open tasks from creative, production, marketing, approval, and content-related spaces or task text. Approval-specific fields are not modeled yet.",
     items: creativeQueueTasks.slice(0, 12).map((task) => {
       const haystack = `${task.title} ${task.description ?? ""}`.toLowerCase();
-      const stage =
-        haystack.includes("revision")
+      const stage = haystack.includes("revision")
+        ? "revision_requested"
+        : haystack.includes("approval") || haystack.includes("review")
+          ? "waiting_for_approval"
+          : task.status === "in_progress"
+            ? "in_production"
+            : haystack.includes("brief")
+              ? "waiting_for_briefing"
+              : "ready_to_start";
+      return {
+        task,
+        stage,
+      };
+    }),
+    counts: creativeQueueTasks.reduce(
+      (acc, task) => {
+        const haystack =
+          `${task.title} ${task.description ?? ""}`.toLowerCase();
+        const stage = haystack.includes("revision")
           ? "revision_requested"
           : haystack.includes("approval") || haystack.includes("review")
             ? "waiting_for_approval"
@@ -754,24 +825,6 @@ async function GET_handler(req: NextRequest) {
               : haystack.includes("brief")
                 ? "waiting_for_briefing"
                 : "ready_to_start";
-      return {
-        task,
-        stage,
-      };
-    }),
-    counts: creativeQueueTasks.reduce(
-      (acc, task) => {
-        const haystack = `${task.title} ${task.description ?? ""}`.toLowerCase();
-        const stage =
-          haystack.includes("revision")
-            ? "revision_requested"
-            : haystack.includes("approval") || haystack.includes("review")
-              ? "waiting_for_approval"
-              : task.status === "in_progress"
-                ? "in_production"
-                : haystack.includes("brief")
-                  ? "waiting_for_briefing"
-                  : "ready_to_start";
         acc[stage as keyof typeof acc] += 1;
         return acc;
       },
@@ -786,7 +839,9 @@ async function GET_handler(req: NextRequest) {
   };
   const departmentWorkload = [
     ...departments.map((department) => {
-      const userIds = new Set(department.members.map((member) => member.user_id));
+      const userIds = new Set(
+        department.members.map((member) => member.user_id),
+      );
       const activeTaskCount = [...userIds].reduce(
         (sum, userId) => sum + (openTaskCountByAssignee.get(userId) ?? 0),
         0,
@@ -800,7 +855,11 @@ async function GET_handler(req: NextRequest) {
         0,
       );
       return {
-        department: { id: department.id, name: department.name, color: department.color },
+        department: {
+          id: department.id,
+          name: department.name,
+          color: department.color,
+        },
         active_tasks: activeTaskCount,
         overdue_tasks: overdueTaskCount,
         upcoming_tasks: upcomingTaskCount,
@@ -813,27 +872,43 @@ async function GET_handler(req: NextRequest) {
         unassignedOpenTaskCount +
         flattenedUsers
           .filter((member) => !member.department_id)
-          .reduce((sum, member) => sum + (openTaskCountByAssignee.get(member.id) ?? 0), 0),
+          .reduce(
+            (sum, member) =>
+              sum + (openTaskCountByAssignee.get(member.id) ?? 0),
+            0,
+          ),
       overdue_tasks:
         unassignedOverdueTaskCount +
         flattenedUsers
           .filter((member) => !member.department_id)
-          .reduce((sum, member) => sum + (overdueTaskCountByAssignee.get(member.id) ?? 0), 0),
+          .reduce(
+            (sum, member) =>
+              sum + (overdueTaskCountByAssignee.get(member.id) ?? 0),
+            0,
+          ),
       upcoming_tasks:
         unassignedUpcomingTaskCount +
         flattenedUsers
           .filter((member) => !member.department_id)
-          .reduce((sum, member) => sum + (upcomingTaskCountByAssignee.get(member.id) ?? 0), 0),
-      assigned_members: flattenedUsers.filter((member) => !member.department_id).length,
+          .reduce(
+            (sum, member) =>
+              sum + (upcomingTaskCountByAssignee.get(member.id) ?? 0),
+            0,
+          ),
+      assigned_members: flattenedUsers.filter((member) => !member.department_id)
+        .length,
     },
   ];
   const busiestMember = workload
     .filter((member) => member.open_tasks > 0)
     .sort((a, b) => b.open_tasks - a.open_tasks)[0];
   const totalOpenTaskCount =
-    workload.reduce((sum, member) => sum + member.open_tasks, 0) + unassignedOpenTaskCount;
+    workload.reduce((sum, member) => sum + member.open_tasks, 0) +
+    unassignedOpenTaskCount;
   const workloadConcentration =
-    busiestMember && totalOpenTaskCount > 0 && busiestMember.open_tasks / totalOpenTaskCount >= 0.5
+    busiestMember &&
+    totalOpenTaskCount > 0 &&
+    busiestMember.open_tasks / totalOpenTaskCount >= 0.5
       ? 1
       : 0;
   const agencyRiskSignals = [
@@ -868,20 +943,33 @@ async function GET_handler(req: NextRequest) {
       trace: busiestMember
         ? `${busiestMember.user.name} owns ${busiestMember.open_tasks} of ${totalOpenTaskCount} open tasks`
         : "No assigned open tasks",
+      trace_values: busiestMember
+        ? {
+            member_name: busiestMember.user.name,
+            member_open_tasks: busiestMember.open_tasks,
+            total_open_tasks: totalOpenTaskCount,
+          }
+        : undefined,
     },
   ];
+
+  const visibleActivity = activity.map((event) => ({
+    ...event,
+    metadata: redactFinancialMetadata(event.metadata, financialsVisible),
+  }));
 
   return NextResponse.json({
     tasks: buildPage(tasks, limit),
     projects: buildPage(projects, limit),
     users: buildPage(flattenedUsers, 100),
     calendar_events: { items: calendarEvents, nextCursor: null },
-    activity: { items: activity, nextCursor: null },
+    activity: { items: visibleActivity, nextCursor: null },
     time: {
       running: runningEntry,
       week_entries: weekTimeEntries,
     },
     command_center: {
+      financials_visible: financialsVisible,
       urgent_actions: { items: urgentActions, count: urgentActions.length },
       team_workload: { items: workload, count: workload.length },
       time_today: {
@@ -890,7 +978,7 @@ async function GET_handler(req: NextRequest) {
         entries: todayEntriesForMe,
       },
       meetings_today: { items: calendarEvents, count: calendarEvents.length },
-      recent_activity: { items: activity, count: activity.length },
+      recent_activity: { items: visibleActivity, count: activity.length },
       projects_at_risk: {
         items: projectsAtRisk,
         count: projectsAtRisk.length,
@@ -919,13 +1007,22 @@ async function GET_handler(req: NextRequest) {
       agency_risk_signals: {
         items: agencyRiskSignals,
       },
-      revenue_snapshot: {
-        active_clients: activeClientCount,
-        total_contract_value: companyRevenue._sum.contract_value ?? 0,
-        total_commission: companyRevenue._sum.commission ?? 0,
-        clients_without_contract_value: companyCount - clientsWithContractValue,
-        top_clients: topClients,
-      },
+      revenue_snapshot: financialsVisible
+        ? {
+            active_clients: activeClientCount,
+            total_contract_value: companyRevenue._sum.contract_value ?? 0,
+            total_commission: companyRevenue._sum.commission ?? 0,
+            clients_without_contract_value:
+              companyCount - clientsWithContractValue,
+            top_clients: topClients,
+          }
+        : {
+            active_clients: activeClientCount,
+            total_contract_value: 0,
+            total_commission: 0,
+            clients_without_contract_value: 0,
+            top_clients: [],
+          },
       quick_create: {
         items: ["task", "meeting", "company", "project", "note"],
       },
@@ -940,7 +1037,4 @@ async function GET_handler(req: NextRequest) {
   });
 }
 
-export const GET = withErrorReporting(
-  "api:dashboard/summary:GET",
-  GET_handler,
-);
+export const GET = withErrorReporting("api:dashboard/summary:GET", GET_handler);

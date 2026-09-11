@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Settings2, UserPlus } from "lucide-react";
 import Header from "@/components/layout/header";
+import { CreateActionButton } from "@/components/ui/create-action-button";
 import InviteDialog from "@/components/dashboard/invite-dialog";
 import { ManageDepartmentsDialog } from "@/components/team/team-management-dialogs";
 import { EmailSetupWarning } from "@/components/team/team-invite-panels";
@@ -232,7 +233,7 @@ export default function TeamPage() {
       );
       if (!response.ok) {
         const payload = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(payload.error || "Failed to update department leader");
+        throw new Error(t("team.couldNotUpdateDepartmentLeader"));
       }
       const updated = (await response.json()) as Department;
       setDepartments((current) =>
@@ -344,8 +345,6 @@ export default function TeamPage() {
         searchAriaLabel={t("team.searchMembers")}
         onSearchChange={setQuery}
         onSearchSubmit={() => undefined}
-        hideUtilityControls
-        hideDefaultPrimaryAction
         actions={
           isAdmin && workspaceId ? (
             <div className="flex flex-wrap items-center justify-end gap-2">
@@ -353,25 +352,23 @@ export default function TeamPage() {
                 type="button"
                 onClick={() => setInviteOpen(true)}
                 aria-label={t("team.inviteUsers")}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-blue-300/15 bg-[#0b1424]/90 px-3 text-xs font-semibold text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-blue-300/30 hover:bg-white/[0.06] sm:h-11"
+                className="inline-flex h-9 min-h-9 items-center gap-2 rounded-xl border border-border bg-background px-3 text-xs font-semibold text-foreground shadow-sm transition hover:border-primary/30 hover:bg-accent"
               >
                 <UserPlus className="h-4 w-4 text-blue-200" />
                 <span className="hidden lg:inline">{t("team.inviteUsers")}</span>
               </button>
-              <button
-                type="button"
+              <CreateActionButton
                 onClick={() => setManageOpen(true)}
                 aria-label={isPortuguese ? "Criar equipe" : "Create team"}
-                className="upflow-gradient-button inline-flex h-10 items-center gap-2 rounded-xl px-3 text-xs font-semibold text-white transition hover:-translate-y-0.5 sm:h-11"
               >
                 <Plus className="h-4 w-4" />
                 <span className="hidden lg:inline">{isPortuguese ? "Criar equipe" : "Create team"}</span>
-              </button>
+              </CreateActionButton>
               <button
                 type="button"
                 onClick={() => setManageOpen(true)}
                 aria-label={t("team.manageDepartments")}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-blue-300/15 bg-[#0b1424]/90 px-3 text-xs font-semibold text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-blue-300/30 hover:bg-white/[0.06] sm:h-11"
+                className="inline-flex h-9 min-h-9 items-center gap-2 rounded-xl border border-border bg-background px-3 text-xs font-semibold text-foreground shadow-sm transition hover:border-primary/30 hover:bg-accent"
               >
                 <Settings2 className="h-4 w-4 text-blue-200" />
                 <span className="hidden 2xl:inline">{t("team.manageDepartments")}</span>

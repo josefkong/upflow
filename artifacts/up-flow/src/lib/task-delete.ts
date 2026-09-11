@@ -34,12 +34,25 @@ export async function collectTaskDescendantIds(tx: Tx, taskIds: string[]) {
   let frontier = Array.from(collected);
 
   while (frontier.length > 0) {
-    const children = await tx.task.findMany({
-      where: { parent_id: { in: frontier } },
-      select: { id: true },
-    });
-    const next = children
-      .map((task) => task.id)
+    const [children, commercialLeadLinks] = await Promise.all([
+      tx.task.findMany({
+        where: { parent_id: { in: frontier } },
+        select: { id: true },
+      }),
+      tx.commercialLead.findMany({
+        where: {
+          task_id: { in: frontier },
+          follow_up_task_id: { not: null },
+        },
+        select: { follow_up_task_id: true },
+      }),
+    ]);
+    const next = [
+      ...children.map((task) => task.id),
+      ...commercialLeadLinks.flatMap((lead) =>
+        lead.follow_up_task_id ? [lead.follow_up_task_id] : [],
+      ),
+    ]
       .filter((id) => !collected.has(id));
 
     next.forEach((id) => collected.add(id));

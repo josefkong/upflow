@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  formatBrazilianMobilePhone,
+  formatPersonName,
   isPhoneLikeName,
+  isValidBrazilianMobilePhone,
   normalizeDisplayName,
   normalizePhone,
 } from "../../src/lib/user-profile";
@@ -18,4 +21,19 @@ test("profile normalization keeps names and phones separate", () => {
     normalizeDisplayName("+55 11 99999-9999", "alex@example.com", "+55 11 99999-9999"),
     "alex",
   );
+});
+
+test("profile names capitalize the first letter of every part", () => {
+  assert.equal(formatPersonName("josef kong"), "Josef Kong");
+  assert.equal(formatPersonName("JOÃO da silva"), "João Da Silva");
+  assert.equal(formatPersonName("ana-maria d'ávila"), "Ana-Maria D'Ávila");
+});
+
+test("Brazilian mobile phones are masked and validated with eleven digits", () => {
+  assert.equal(formatBrazilianMobilePhone("11987654321"), "(11) 98765-4321");
+  assert.equal(formatBrazilianMobilePhone("+55 11 98765-4321"), "(11) 98765-4321");
+  assert.equal(formatBrazilianMobilePhone("11987"), "(11) 987");
+  assert.equal(isValidBrazilianMobilePhone("(11) 98765-4321"), true);
+  assert.equal(isValidBrazilianMobilePhone("(11) 9876-5432"), false);
+  assert.equal(isValidBrazilianMobilePhone(""), false);
 });

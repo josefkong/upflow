@@ -9,7 +9,7 @@ function read(rel: string) {
   return readFileSync(join(ROOT, rel), "utf8");
 }
 
-test("task cover images are persisted, validated, and shown on board cards", () => {
+test("legacy task cover data remains compatible without exposing cover controls in the Flow UI", () => {
   const schema = read("prisma/schema.prisma");
   const migration = read("prisma/migrations/20260526114500_add_task_cover_image/migration.sql");
   const privateBucketMigration = read(
@@ -48,12 +48,13 @@ test("task cover images are persisted, validated, and shown on board cards", () 
   assert.match(control, /\/api\/uploads\/task-cover/);
   assert.doesNotMatch(tasksRoute, /data:image/);
   assert.doesNotMatch(taskRoute, /data:image/);
-  assert.match(board, /task\.cover_image_url/);
-  assert.match(board, /aspect-video w-full object-cover/);
+  assert.doesNotMatch(board, /task\.cover_image_url/);
+  assert.doesNotMatch(board, /getTaskCoverDisplayUrl/);
   assert.doesNotMatch(board, /priorityLabel/);
   assert.doesNotMatch(board, /shadow-\[0_0_12px_currentColor\]/);
-  assert.match(sheet, /t\("task\.boardCoverImage"\)/);
-  assert.match(taskCreator, /TaskCoverImageControl/);
-  assert.match(taskCreator, /compact/);
+  assert.doesNotMatch(sheet, /TaskCoverImageControl/);
+  assert.doesNotMatch(sheet, /taskWorkspace\.manageCover/);
+  assert.doesNotMatch(taskCreator, /TaskCoverImageControl/);
+  assert.doesNotMatch(taskCreator, /cover_image_url: coverImageUrl/);
   assert.match(control, /compact \? null/);
 });

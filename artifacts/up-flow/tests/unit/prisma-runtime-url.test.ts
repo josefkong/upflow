@@ -14,19 +14,33 @@ test("enables PgBouncer compatibility for the Supabase transaction pooler", () =
   assert.equal(url.searchParams.get("sslmode"), "require");
 });
 
-test("does not apply PgBouncer mode to non-transaction URLs", () => {
+test("normalizes the Supabase session pooler to transaction mode", () => {
   const sessionPoolerUrl =
     "postgresql://postgres.project:example@aws-1-sa-east-1.pooler.supabase.com:5432/postgres";
   const directUrl = "postgresql://postgres:example@db.project.supabase.co:5432/postgres";
 
-  assert.equal(
-    new URL(toPrismaRuntimeDatabaseUrl(sessionPoolerUrl)).searchParams.has("pgbouncer"),
-    false,
+  const normalizedPoolerUrl = new URL(
+    toPrismaRuntimeDatabaseUrl(sessionPoolerUrl),
   );
+  assert.equal(normalizedPoolerUrl.port, "6543");
+  assert.equal(normalizedPoolerUrl.searchParams.get("pgbouncer"), "true");
   assert.equal(
     new URL(toPrismaRuntimeDatabaseUrl(directUrl)).searchParams.has("pgbouncer"),
     false,
   );
+});
+
+test("allows the local Next.js process to use a wider bounded transaction pool", () => {
+  const sessionPoolerUrl =
+    "postgresql://postgres.project:example@aws-1-sa-east-1.pooler.supabase.com:5432/postgres";
+  const url = new URL(
+    toPrismaRuntimeDatabaseUrl(sessionPoolerUrl, { connectionLimit: 5 }),
+  );
+
+  assert.equal(url.port, "6543");
+  assert.equal(url.searchParams.get("pgbouncer"), "true");
+  assert.equal(url.searchParams.get("connection_limit"), "5");
+  assert.equal(url.searchParams.get("pool_timeout"), "20");
 });
 
 test("keeps malformed database URLs unchanged", () => {

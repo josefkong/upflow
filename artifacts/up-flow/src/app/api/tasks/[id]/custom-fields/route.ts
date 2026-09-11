@@ -27,6 +27,9 @@ import {
   SOCIAL_MEDIA_PRODUCTION_GATE_ERROR,
 } from "@/lib/social-media";
 import { parseAppDate } from "@/lib/utils";
+import { COMMERCIAL_LEAD_STAGE_FIELD_NAME, commercialLeadStageFromName } from "@/lib/commercial-lead-stages";
+import { COMMERCIAL_FOLLOW_UP_FIELD_NAME } from "@/lib/commercial-follow-up";
+import { COMMERCIAL_CONTRACT_STAGE_FIELD_NAME } from "@/lib/commercial-contract-stages";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -98,6 +101,18 @@ async function PUT_handler(
       status: true,
       social_media_plan_id: true,
       social_media_plan: { select: { month: true, moodboard_status: true } },
+      commercial_lead: {
+        select: {
+          id: true,
+          stage: true,
+          proposal_uploaded_at: true,
+          presentation_starts_at: true,
+          presentation_ends_at: true,
+        },
+      },
+      commercial_follow_up: { select: { id: true } },
+      commercial_contract_handoff: { select: { id: true } },
+      commercial_finance_contract: { select: { id: true } },
       project: { select: { id: true, workspace_id: true, owner_id: true } },
     },
   });
@@ -124,6 +139,37 @@ async function PUT_handler(
   });
   if (!def || def.project_id !== task.project_id) {
     return NextResponse.json({ error: "Field not in this project" }, { status: 400 });
+  }
+  const commercialStage =
+    def.name === COMMERCIAL_LEAD_STAGE_FIELD_NAME && typeof body.value === "string"
+      ? commercialLeadStageFromName(body.value)
+      : null;
+  if (def.name === COMMERCIAL_LEAD_STAGE_FIELD_NAME && task.commercial_lead) {
+    if (!commercialStage) {
+      return NextResponse.json({ error: "Selecione uma etapa válida do fluxo Comercial." }, { status: 400 });
+    }
+    return NextResponse.json({ error: "As etapas do fluxo Comercial avançam automaticamente pelas ações do lead." }, { status: 409 });
+  }
+  if (
+    def.name === COMMERCIAL_FOLLOW_UP_FIELD_NAME &&
+    task.commercial_follow_up
+  ) {
+    return NextResponse.json(
+      { error: "As etapas de Follow Up avançam somente pelos checkpoints da tarefa." },
+      { status: 409 },
+    );
+  }
+  if (
+    def.name === COMMERCIAL_CONTRACT_STAGE_FIELD_NAME &&
+    (task.commercial_contract_handoff || task.commercial_finance_contract)
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "As etapas contratuais avançam somente pelas confirmações do fluxo Financeiro.",
+      },
+      { status: 409 },
+    );
   }
 
   const taskStatusChanged = body.task_status !== undefined && body.task_status !== task.status;
@@ -358,6 +404,15 @@ async function PUT_handler(
         });
       }
       await updateTaskStatus(tx);
+      if (commercialStage && task.commercial_lead) {
+        await tx.commercialLead.update({
+          where: { id: task.commercial_lead.id },
+          data: {
+            stage: commercialStage,
+            ...(commercialStage === "completed" ? { closed_at: new Date() } : { closed_at: null }),
+          },
+        });
+      }
       return { ok: true as const, publishedAt: nextPublishedAt };
     });
     if (!mutation.ok) {

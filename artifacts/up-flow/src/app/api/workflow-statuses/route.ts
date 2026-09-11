@@ -2,18 +2,31 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { requireAuth } from "@/lib/auth-response";
-import { requireCurrentWorkspace, requireWorkspaceAdmin } from "@/lib/api/scope";
+import {
+  requireCurrentWorkspace,
+  requireWorkspaceAdmin,
+} from "@/lib/api/scope";
 import { buildPage, parsePagination } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 import { recordActivity } from "@/lib/activity";
 import { withErrorReporting } from "@/lib/with-error-reporting";
 import { isSpaceWorkflowSchemaUnavailable } from "@/lib/space-workflow-schema";
+import { commercialFlowProjectKind } from "@/lib/commercial-managed-projects";
+import { ensureCommercialContractProjectModel } from "@/lib/commercial-contract-stages";
+import { ensureCommercialLeadProjectModel } from "@/lib/commercial-lead-flow.server";
+import { isFinanceContractMirrorProject } from "@/lib/commercial-contract-mirror";
+import {
+  ensureOnboardingProjectStageModel,
+  isOnboardingMirrorProject,
+} from "@/lib/onboarding-shared-flow";
 
 const WorkflowStatusSchema = z.object({
   project_id: z.string().uuid().nullable().optional(),
   key: z.string().trim().min(1).max(80),
   name: z.string().trim().min(1).max(120),
-  category: z.enum(["task", "doc", "report", "campaign", "deliverable"]).default("task"),
+  category: z
+    .enum(["task", "doc", "report", "campaign", "deliverable"])
+    .default("task"),
   stage_order: z.number().int().min(0).max(999).default(0),
   color: z.string().trim().max(80).nullable().optional(),
   terminal: z.boolean().default(false),
@@ -28,7 +41,10 @@ async function GET_handler(req: NextRequest) {
   if (!scope.ok) return scope.response;
 
   const { searchParams } = new URL(req.url);
-  const { limit, cursor } = parsePagination(req, { defaultLimit: 100, maxLimit: 200 });
+  const { limit, cursor } = parsePagination(req, {
+    defaultLimit: 100,
+    maxLimit: 200,
+  });
   const category = searchParams.get("category")?.trim();
   const projectId = searchParams.get("project_id")?.trim();
   const where: Prisma.WorkflowStatusWhereInput = {
@@ -38,12 +54,61 @@ async function GET_handler(req: NextRequest) {
   if (projectId) {
     const project = await prisma.project.findFirst({
       where: { id: projectId, workspace_id: scope.workspaceId },
-      select: { space_id: true },
+      select: {
+        space_id: true,
+        name: true,
+        company_id: true,
+        onboarding_enabled: true,
+        space: { select: { name: true } },
+      },
     });
-    if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    if (!project)
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    const commercialProjectKind = commercialFlowProjectKind({
+      projectName: project.name,
+      spaceName: project.space?.name,
+    });
+    const isContractHandoff =
+      commercialProjectKind === "contract_handoff" ||
+      isFinanceContractMirrorProject({
+        projectName: project.name,
+        spaceName: project.space?.name,
+      });
+    if (commercialProjectKind === "leads") {
+      await prisma.$transaction((tx) =>
+        ensureCommercialLeadProjectModel(tx, {
+          workspaceId: scope.workspaceId,
+          projectId,
+        }),
+      );
+    }
+    if (isContractHandoff) {
+      await prisma.$transaction((tx) =>
+        ensureCommercialContractProjectModel(tx, {
+          workspaceId: scope.workspaceId,
+          projectId,
+        }),
+      );
+    }
+    if (
+      isOnboardingMirrorProject({
+        projectName: project.name,
+        onboardingEnabled: project.onboarding_enabled,
+        companyId: project.company_id,
+      })
+    ) {
+      await prisma.$transaction((tx) =>
+        ensureOnboardingProjectStageModel(tx, {
+          workspaceId: scope.workspaceId,
+          projectId,
+        }),
+      );
+    }
     where.OR = [
       { project_id: projectId },
-      ...(project.space_id ? [{ project_id: null, space_id: project.space_id }] : []),
+      ...(project.space_id
+        ? [{ project_id: null, space_id: project.space_id }]
+        : []),
       { project_id: null, space_id: null },
     ];
   }
@@ -63,7 +128,9 @@ async function GET_handler(req: NextRequest) {
       where: {
         workspace_id: scope.workspaceId,
         ...(category ? { category } : {}),
-        ...(projectId ? { OR: [{ project_id: null }, { project_id: projectId }] } : {}),
+        ...(projectId
+          ? { OR: [{ project_id: null }, { project_id: projectId }] }
+          : {}),
       },
       take: limit + 1,
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
@@ -110,7 +177,8 @@ async function POST_handler(req: NextRequest) {
       where: { id: parsed.data.project_id, workspace_id: scope.workspaceId },
       select: { id: true },
     });
-    if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    if (!project)
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
   const existing = await prisma.workflowStatus.findFirst({
@@ -161,4 +229,7 @@ async function POST_handler(req: NextRequest) {
 }
 
 export const GET = withErrorReporting("api:workflow-statuses:GET", GET_handler);
-export const POST = withErrorReporting("api:workflow-statuses:POST", POST_handler);
+export const POST = withErrorReporting(
+  "api:workflow-statuses:POST",
+  POST_handler,
+);

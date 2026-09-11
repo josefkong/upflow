@@ -16,14 +16,6 @@ import { syncSpaceTaskStatusFields } from "@/lib/space-workflow-statuses";
 import { isSpaceWorkflowSchemaUnavailable } from "@/lib/space-workflow-schema";
 import { logError } from "@/lib/log-error";
 
-async function canCreateProjectInWorkspace(userId: string, workspaceId: string, admin: boolean) {
-  if (admin) return true;
-  const member = await prisma.workspaceMember.findUnique({
-    where: { workspace_id_user_id: { workspace_id: workspaceId, user_id: userId } },
-  });
-  return Boolean(member?.status === "active" && member.role !== "guest");
-}
-
 async function getHandler(req: NextRequest) {
   const _r = await requireAuth();
   if (!_r.ok) return _r.response;
@@ -57,8 +49,7 @@ async function postHandler(req: NextRequest) {
   if (!auth.currentWorkspaceId) {
     return NextResponse.json({ error: "No active workspace" }, { status: 400 });
   }
-  const isAdmin = isWorkspaceAdminFor(auth, auth.currentWorkspaceId);
-  if (!(await canCreateProjectInWorkspace(auth.prismaUser.id, auth.currentWorkspaceId, isAdmin))) {
+  if (!isWorkspaceAdminFor(auth, auth.currentWorkspaceId)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -251,4 +242,3 @@ async function postHandler(req: NextRequest) {
 
 export const GET = withErrorReporting("api:projects:GET", getHandler);
 export const POST = withErrorReporting("api:projects:POST", postHandler);
-

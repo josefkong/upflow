@@ -5,6 +5,10 @@ import { requireAuth } from "@/lib/auth-response";
 import { buildPage, parsePagination } from "@/lib/pagination";
 import { startOfToday } from "@/lib/time-range";
 import { withErrorReporting } from "@/lib/with-error-reporting";
+import {
+  canViewClientFinancials,
+  redactClientFinancials,
+} from "@/lib/client-financial-access";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +36,7 @@ async function GET_handler(
   const { limit, cursor } = parsePagination(req, { defaultLimit: 25, maxLimit: 100 });
   const { todayStart, tomorrowStart, sevenDaysAgo } = dayWindow();
   const workspaceId = auth.currentWorkspaceId;
+  const financialsVisible = await canViewClientFinancials(auth, workspaceId);
   const status = searchParams.get("status");
 
   if (params.group === "urgent-actions") {
@@ -160,7 +165,14 @@ async function GET_handler(
         _count: { select: { contacts: true, projects: true, tasks: true } },
       },
     });
-    return NextResponse.json(buildPage(rows, limit));
+    return NextResponse.json(
+      buildPage(
+        rows.map((company) =>
+          redactClientFinancials(company, financialsVisible),
+        ),
+        limit,
+      ),
+    );
   }
 
   return NextResponse.json({ error: "Unknown dashboard detail group" }, { status: 404 });

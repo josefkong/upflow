@@ -108,6 +108,7 @@ type GoogleCalendarEventRecord = {
   id: string;
   workspace_id: string;
   created_by: string;
+  responsible_user_id?: string | null;
   title: string;
   description: string | null;
   starts_at: Date;
@@ -116,7 +117,14 @@ type GoogleCalendarEventRecord = {
   status: string;
   location: string | null;
   meeting_url: string | null;
+  google_meet_requested?: boolean;
   reminders: Array<{ minutes_before: number; enabled?: boolean }>;
+  attendees?: Array<{ user: { email: string } }>;
+  company?: {
+    main_contact_email: string | null;
+    billing_email: string | null;
+    contacts: Array<{ email: string | null }>;
+  } | null;
 };
 
 type GoogleCalendarTransaction = Prisma.TransactionClient;
@@ -133,6 +141,7 @@ type GoogleCalendarApiEvent = {
   id?: unknown;
   etag?: unknown;
   htmlLink?: unknown;
+  hangoutLink?: unknown;
 };
 
 type GoogleCalendarApiList = {
@@ -193,6 +202,7 @@ export type GoogleCalendarEventPayload = {
   start: { dateTime: string; timeZone?: string };
   end: { dateTime: string; timeZone?: string };
   status?: "cancelled";
+  attendees?: Array<{ email: string }>;
   reminders: {
     useDefault: boolean;
     overrides?: Array<{ method: "popup"; minutes: number }>;
@@ -202,6 +212,12 @@ export type GoogleCalendarEventPayload = {
       upflow_event_id: string;
       upflow_workspace_id: string;
       upflow_source: "calendar";
+    };
+  };
+  conferenceData?: {
+    createRequest: {
+      requestId: string;
+      conferenceSolutionKey: { type: "hangoutsMeet" };
     };
   };
 };
@@ -751,6 +767,38 @@ export function isGoogleCalendarCallbackOrigin(
   }
 }
 
+/**
+ * Reconstruct the browser-facing origin for self-hosted Next.js. In local
+ * development `request.url` can contain the bind address (`0.0.0.0`) even
+ * when the browser and its session cookie are using `localhost`.
+ */
+export function getGoogleCalendarBrowserOrigin(
+  requestUrl: string | URL,
+  headers: Pick<Headers, "get">,
+) {
+  const parsedRequestUrl = new URL(requestUrl);
+  const fallback = parsedRequestUrl.origin;
+  const forwardedHost = headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const host = forwardedHost || headers.get("host")?.trim();
+  const forwardedProtocol = headers
+    .get("x-forwarded-proto")
+    ?.split(",")[0]
+    ?.trim()
+    .toLowerCase();
+  const protocol =
+    forwardedProtocol === "http" || forwardedProtocol === "https"
+      ? `${forwardedProtocol}:`
+      : parsedRequestUrl.protocol;
+
+  if (!host) return fallback;
+
+  try {
+    return new URL(`${protocol}//${host}`).origin;
+  } catch {
+    return fallback;
+  }
+}
+
 export function getGoogleCalendarResultUrl(
   config: GoogleCalendarConfig,
   result: GoogleCalendarOAuthResult,
@@ -960,6 +1008,159 @@ export async function completeGoogleCalendarConnect(input: {
   }
 }
 
+/**
+ * Reuse the Google provider grant returned by Supabase's PKCE callback. This
+ * makes the single "Continue with Google" action authenticate the member and
+ * connect that same account to Calendar without exposing provider tokens to
+ * the browser. A missing refresh token is accepted only for a verified
+ * reconnect to the exact same Google subject, where the encrypted durable
+ * token already stored by UpFlow can be retained.
+ */
+export async function connectGoogleCalendarFromSupabaseSession(input: {
+  workspaceId: string;
+  userId: string;
+  authenticatedEmail: string;
+  accessToken: string | null;
+  refreshToken: string | null;
+}) {
+  const config = getGoogleCalendarConfig();
+  const expectedEmail = input.authenticatedEmail.trim().toLowerCase();
+  if (
+    !config ||
+    !input.workspaceId ||
+    !input.userId ||
+    !expectedEmail ||
+    !input.accessToken ||
+    input.accessToken.length > TOKEN_MAX_LENGTH ||
+    (input.refreshToken?.length ?? 0) > TOKEN_MAX_LENGTH
+  ) {
+    return { ok: false as const };
+  }
+
+  const profile = await fetchGoogleUserProfile(input.accessToken);
+  const googleSubject = profile?.subject;
+  const googleEmail = profile?.email?.trim().toLowerCase();
+  if (!googleSubject || !googleEmail || googleEmail !== expectedEmail) {
+    return { ok: false as const };
+  }
+
+  const accessTokenCiphertext = encryptGoogleCalendarSecret(
+    input.accessToken,
+    config.tokenEncryptionKey,
+  );
+  const suppliedRefreshTokenCiphertext = input.refreshToken
+    ? encryptGoogleCalendarSecret(input.refreshToken, config.tokenEncryptionKey)
+    : null;
+
+  try {
+    const saved = await prisma.$transaction(async (tx) => {
+      const activeMemberships = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "WorkspaceMember"
+        WHERE "workspace_id" = ${input.workspaceId}
+          AND "user_id" = ${input.userId}
+          AND "status" = 'active'
+        FOR UPDATE
+      `;
+      if (activeMemberships.length === 0) {
+        return { ok: false as const, replacedConnection: null };
+      }
+
+      const existing = (await tx.googleCalendarConnection.findUnique({
+        where: {
+          workspace_id_user_id: {
+            workspace_id: input.workspaceId,
+            user_id: input.userId,
+          },
+        },
+      })) as GoogleCalendarConnectionRecord | null;
+      if (existing && !(await lockGoogleCalendarConnectionForSync(tx, existing.id))) {
+        return { ok: false as const, replacedConnection: null };
+      }
+      const lockedExisting = existing
+        ? ((await tx.googleCalendarConnection.findUnique({
+            where: { id: existing.id },
+          })) as GoogleCalendarConnectionRecord | null)
+        : null;
+      const matchingExisting =
+        lockedExisting?.google_subject === googleSubject ? lockedExisting : null;
+      const refreshTokenCiphertext =
+        suppliedRefreshTokenCiphertext ?? matchingExisting?.refresh_token_ciphertext ?? null;
+      if (!refreshTokenCiphertext) {
+        return { ok: false as const, replacedConnection: null };
+      }
+
+      const replacedConnection =
+        lockedExisting && !matchingExisting ? lockedExisting : null;
+      if (replacedConnection) {
+        await tx.googleCalendarConnection.delete({
+          where: { id: replacedConnection.id },
+        });
+      }
+
+      const data = {
+        google_subject: googleSubject,
+        google_email: googleEmail,
+        google_name: profile?.name ?? matchingExisting?.google_name ?? null,
+        calendar_id: matchingExisting?.calendar_id ?? "primary",
+        calendar_name: matchingExisting?.calendar_name ?? "Primary",
+        access_token_ciphertext: accessTokenCiphertext,
+        refresh_token_ciphertext: refreshTokenCiphertext,
+        token_expires_at: tokenExpiresAt(3600),
+        scope: GOOGLE_CALENDAR_SCOPES.join(" "),
+        sync_enabled: true,
+        share_agenda: matchingExisting?.share_agenda ?? true,
+        disconnected_at: null,
+        last_error: null,
+        agenda_last_error: null,
+      };
+      const storedConnection = await tx.googleCalendarConnection.upsert({
+        where: {
+          workspace_id_user_id: {
+            workspace_id: input.workspaceId,
+            user_id: input.userId,
+          },
+        },
+        create: {
+          workspace_id: input.workspaceId,
+          user_id: input.userId,
+          ...data,
+        },
+        update: data,
+      });
+
+      await tx.googleCalendarSyncJob.updateMany({
+        where: {
+          connection_id: storedConnection.id,
+          operation: "delete",
+          status: { in: ["pending", "failed"] },
+        },
+        data: {
+          status: "pending",
+          next_attempt_at: new Date(),
+          locked_until: null,
+          last_error: null,
+          completed_at: null,
+        },
+      });
+      return { ok: true as const, replacedConnection };
+    });
+
+    if (!saved.ok) return { ok: false as const };
+    if (
+      saved.replacedConnection &&
+      isGoogleCalendarConnectionActive(saved.replacedConnection)
+    ) {
+      await revokeGoogleCalendarToken(saved.replacedConnection, config).catch(
+        () => undefined,
+      );
+    }
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const };
+  }
+}
+
 async function findGoogleCalendarConnection(
   workspaceId: string,
   userId: string,
@@ -977,6 +1178,15 @@ async function findActiveGoogleCalendarConnection(
 ) {
   const connection = await findGoogleCalendarConnection(workspaceId, userId, db);
   return isGoogleCalendarConnectionActive(connection) ? connection : null;
+}
+
+export async function hasActiveGoogleCalendarConnection(input: {
+  workspaceId: string;
+  userId: string;
+}) {
+  return Boolean(
+    await findActiveGoogleCalendarConnection(input.workspaceId, input.userId),
+  );
 }
 
 export async function listGoogleCalendars(input: { workspaceId: string; userId: string }) {
@@ -1500,6 +1710,21 @@ export function buildGoogleCalendarEventPayload(
     .filter((part): part is string => Boolean(part));
   const description = descriptionParts.join("\n\n");
   const location = event.location?.trim() ?? "";
+  const clientEmail =
+    event.company?.main_contact_email ??
+    event.company?.contacts.find((contact) => contact.email)?.email ??
+    event.company?.billing_email ??
+    null;
+  const attendeeEmails = Array.from(
+    new Set(
+      [
+        ...(event.attendees ?? []).map((attendee) => attendee.user.email),
+        clientEmail,
+      ]
+        .map((email) => email?.trim().toLowerCase())
+        .filter((email): email is string => Boolean(email && email.includes("@"))),
+    ),
+  );
 
   const reminderMinutes = Array.from(
     new Set(
@@ -1520,6 +1745,9 @@ export function buildGoogleCalendarEventPayload(
     start: { dateTime: event.starts_at.toISOString(), ...(timeZone ? { timeZone } : {}) },
     end: { dateTime: endAt.toISOString(), ...(timeZone ? { timeZone } : {}) },
     ...(event.status === "cancelled" ? { status: "cancelled" as const } : {}),
+    ...(attendeeEmails.length > 0
+      ? { attendees: attendeeEmails.map((email) => ({ email })) }
+      : {}),
     reminders:
       reminderMinutes.length > 0
         ? {
@@ -1534,14 +1762,31 @@ export function buildGoogleCalendarEventPayload(
         upflow_source: "calendar",
       },
     },
+    ...(event.google_meet_requested && !event.meeting_url
+      ? {
+          conferenceData: {
+            createRequest: {
+              requestId: `upflow-${event.id}`,
+              conferenceSolutionKey: { type: "hangoutsMeet" as const },
+            },
+          },
+        }
+      : {}),
   };
 }
 
 function googleEventPath(calendarId: string, eventId?: string) {
   const calendar = encodeURIComponent(calendarId);
   return eventId
-    ? `/calendars/${calendar}/events/${encodeURIComponent(eventId)}?sendUpdates=none`
-    : `/calendars/${calendar}/events?sendUpdates=none`;
+    ? `/calendars/${calendar}/events/${encodeURIComponent(eventId)}?sendUpdates=all&conferenceDataVersion=1`
+    : `/calendars/${calendar}/events?sendUpdates=all&conferenceDataVersion=1`;
+}
+
+function googleCalendarOrganizerUserId(event: {
+  created_by: string;
+  responsible_user_id?: string | null;
+}) {
+  return event.responsible_user_id || event.created_by;
 }
 
 async function writeGoogleCalendarEventLink(input: {
@@ -1650,7 +1895,11 @@ async function writeGoogleCalendarEventFailure(input: {
 
 export async function syncGoogleCalendarEvent(
   eventId: string,
-  options: { force?: boolean; db?: GoogleCalendarDatabaseClient } = {},
+  options: {
+    force?: boolean;
+    db?: GoogleCalendarDatabaseClient;
+    connectionId?: string;
+  } = {},
 ) {
   const db = options.db ?? prisma;
   const config = getGoogleCalendarConfig();
@@ -1662,6 +1911,7 @@ export async function syncGoogleCalendarEvent(
       id: true,
       workspace_id: true,
       created_by: true,
+      responsible_user_id: true,
       title: true,
       description: true,
       starts_at: true,
@@ -1670,18 +1920,35 @@ export async function syncGoogleCalendarEvent(
       status: true,
       location: true,
       meeting_url: true,
+      google_meet_requested: true,
       reminders: { select: { minutes_before: true, enabled: true } },
+      attendees: { select: { user: { select: { email: true } } } },
+      company: {
+        select: {
+          main_contact_email: true,
+          billing_email: true,
+          contacts: { select: { email: true }, orderBy: { created_at: "asc" } },
+        },
+      },
     },
   })) as GoogleCalendarEventRecord | null;
   if (!event) return { status: "skipped" as const };
 
   // Calendar events can outlive a workspace membership. Never use a stored
   // OAuth connection for a former or inactive workspace member.
-  if (!(await hasActiveWorkspaceMembership(event.workspace_id, event.created_by, db))) {
+  const organizerUserId = googleCalendarOrganizerUserId(event);
+  if (!(await hasActiveWorkspaceMembership(event.workspace_id, organizerUserId, db))) {
     return { status: "skipped" as const };
   }
 
-  const connection = await findActiveGoogleCalendarConnection(event.workspace_id, event.created_by, db);
+  const connection = await findActiveGoogleCalendarConnection(
+    event.workspace_id,
+    organizerUserId,
+    db,
+  );
+  if (options.connectionId && connection?.id !== options.connectionId) {
+    return { status: "skipped" as const };
+  }
   if (!connection || (!connection.sync_enabled && !options.force)) {
     return { status: "skipped" as const };
   }
@@ -1697,6 +1964,15 @@ export async function syncGoogleCalendarEvent(
 
   try {
     const payload = buildGoogleCalendarEventPayload(event);
+    // Google already adds the authenticated calendar owner as organizer. Do
+    // not duplicate that person as an attendee or send them a self-invite.
+    const organizerEmail = connection.google_email?.trim().toLowerCase();
+    if (payload.attendees && organizerEmail) {
+      payload.attendees = payload.attendees.filter(
+        ({ email }) => email.toLowerCase() !== organizerEmail,
+      );
+      if (payload.attendees.length === 0) delete payload.attendees;
+    }
     let remoteEvent: GoogleCalendarApiEvent | null;
 
     if (link?.google_event_id && link.google_calendar_id === connection.calendar_id) {
@@ -1752,6 +2028,10 @@ export async function syncGoogleCalendarEvent(
     }
 
     if (!remoteEvent) throw new GoogleCalendarProviderError("Google Calendar event response was empty");
+    const generatedMeetingUrl = typeof remoteEvent.hangoutLink === "string" ? remoteEvent.hangoutLink : null;
+    if (generatedMeetingUrl && generatedMeetingUrl !== event.meeting_url) {
+      await db.calendarEvent.update({ where: { id: event.id }, data: { meeting_url: generatedMeetingUrl } });
+    }
     await writeGoogleCalendarEventLink({
       eventId: event.id,
       connectionId: connection.id,
@@ -1810,13 +2090,20 @@ export async function queueGoogleCalendarEventSyncInTransaction(
 
   const initialEvent = await tx.calendarEvent.findUnique({
     where: { id: eventId },
-    select: { id: true, workspace_id: true, created_by: true },
+    select: {
+      id: true,
+      workspace_id: true,
+      created_by: true,
+      responsible_user_id: true,
+    },
   });
   if (!initialEvent) return null;
 
+  const initialOrganizerUserId = googleCalendarOrganizerUserId(initialEvent);
+
   const initialConnection = await findActiveGoogleCalendarConnection(
     initialEvent.workspace_id,
-    initialEvent.created_by,
+    initialOrganizerUserId,
     tx,
   );
   if (!initialConnection) return null;
@@ -1829,9 +2116,20 @@ export async function queueGoogleCalendarEventSyncInTransaction(
 
   const event = await tx.calendarEvent.findUnique({
       where: { id: eventId },
-      select: { id: true, workspace_id: true, created_by: true },
+      select: {
+        id: true,
+        workspace_id: true,
+        created_by: true,
+        responsible_user_id: true,
+      },
   });
-  if (!event || !(await hasActiveWorkspaceMembership(event.workspace_id, event.created_by, tx))) {
+  const organizerUserId = event ? googleCalendarOrganizerUserId(event) : null;
+  if (
+    !event ||
+    !organizerUserId ||
+    organizerUserId !== initialOrganizerUserId ||
+    !(await hasActiveWorkspaceMembership(event.workspace_id, organizerUserId, tx))
+  ) {
     return null;
   }
 
@@ -1856,7 +2154,7 @@ export async function queueGoogleCalendarEventSyncInTransaction(
     },
     create: {
       workspace_id: event.workspace_id,
-      user_id: event.created_by,
+      user_id: organizerUserId,
       connection_id: connection.id,
       event_id: event.id,
       operation: "upsert",
@@ -1887,6 +2185,175 @@ export async function queueGoogleCalendarEventSyncInTransaction(
   return job.id;
 }
 
+/**
+ * Snapshot the previous organizer's remote event before a responsible person
+ * changes. The caller invokes this in the same transaction immediately before
+ * updating CalendarEvent, then queues the new organizer's upsert afterwards.
+ */
+export async function prepareGoogleCalendarOrganizerChangeInTransaction(
+  tx: GoogleCalendarTransaction,
+  eventId: string,
+  nextOrganizerUserId: string,
+) {
+  if (!getGoogleCalendarConfig()) return [] as string[];
+
+  const event = await tx.calendarEvent.findUnique({
+    where: { id: eventId },
+    select: {
+      id: true,
+      workspace_id: true,
+      created_by: true,
+      responsible_user_id: true,
+    },
+  });
+  if (!event || googleCalendarOrganizerUserId(event) === nextOrganizerUserId) {
+    return [] as string[];
+  }
+
+  const [links, upserts, nextConnection] = await Promise.all([
+    tx.googleCalendarEventLink.findMany({
+      where: { event_id: eventId },
+      select: {
+        connection_id: true,
+        google_calendar_id: true,
+        google_event_id: true,
+      },
+    }),
+    tx.googleCalendarSyncJob.findMany({
+      where: {
+        event_id: eventId,
+        operation: "upsert",
+        status: { in: ["pending", "failed", "processing"] },
+      },
+      select: {
+        connection_id: true,
+        google_calendar_id: true,
+        google_event_id: true,
+      },
+    }),
+    tx.googleCalendarConnection.findUnique({
+      where: {
+        workspace_id_user_id: {
+          workspace_id: event.workspace_id,
+          user_id: nextOrganizerUserId,
+        },
+      },
+      select: { id: true },
+    }),
+  ]);
+  const oldConnectionIds = Array.from(
+    new Set([
+      ...links.map((link) => link.connection_id),
+      ...upserts.map((job) => job.connection_id),
+    ]),
+  ).filter((connectionId) => connectionId !== nextConnection?.id);
+  if (oldConnectionIds.length === 0) return [] as string[];
+
+  // Lock every affected connection in deterministic order before the event.
+  // queueGoogleCalendarEventSyncInTransaction will encounter the new
+  // organizer's already-held lock after the event update, avoiding a reverse
+  // connection/event lock order during concurrent reassignments.
+  const affectedConnectionIds = Array.from(
+    new Set([
+      ...oldConnectionIds,
+      ...(nextConnection?.id ? [nextConnection.id] : []),
+    ]),
+  ).sort();
+  for (const connectionId of affectedConnectionIds) {
+    await lockGoogleCalendarConnectionForSync(tx, connectionId);
+  }
+  if (!(await lockCalendarEventForGoogleSync(tx, eventId))) return [] as string[];
+
+  const connections = (await tx.googleCalendarConnection.findMany({
+    where: { id: { in: oldConnectionIds } },
+  })) as GoogleCalendarConnectionRecord[];
+  const connectionById = new Map(
+    connections.map((connection) => [connection.id, connection]),
+  );
+  const targets = new Map<
+    string,
+    { connection: GoogleCalendarConnectionRecord; calendarId: string; eventId: string }
+  >();
+  const addTarget = (
+    connectionId: string,
+    calendarId: string | null,
+    googleEventId: string | null,
+  ) => {
+    const connection = connectionById.get(connectionId);
+    if (!connection || !calendarId || !googleEventId || targets.has(connectionId)) return;
+    targets.set(connectionId, {
+      connection,
+      calendarId,
+      eventId: googleEventId,
+    });
+  };
+  for (const link of links) {
+    addTarget(link.connection_id, link.google_calendar_id, link.google_event_id);
+  }
+  for (const job of upserts) {
+    addTarget(
+      job.connection_id,
+      job.google_calendar_id,
+      job.google_event_id ?? createGoogleCalendarProviderEventId(eventId),
+    );
+  }
+
+  const now = new Date();
+  await tx.googleCalendarSyncJob.updateMany({
+    where: {
+      event_id: eventId,
+      connection_id: { in: oldConnectionIds },
+      operation: "upsert",
+      status: { in: ["pending", "failed", "processing"] },
+    },
+    data: {
+      status: "cancelled",
+      lease_token: null,
+      locked_until: null,
+      last_error: null,
+      completed_at: now,
+    },
+  });
+
+  const queued: string[] = [];
+  for (const target of targets.values()) {
+    const job = await tx.googleCalendarSyncJob.upsert({
+      where: {
+        event_id_connection_id_operation: {
+          event_id: eventId,
+          connection_id: target.connection.id,
+          operation: "delete",
+        },
+      },
+      create: {
+        workspace_id: target.connection.workspace_id,
+        user_id: target.connection.user_id,
+        connection_id: target.connection.id,
+        event_id: eventId,
+        operation: "delete",
+        google_calendar_id: target.calendarId,
+        google_event_id: target.eventId,
+        status: "pending",
+        next_attempt_at: now,
+      },
+      update: {
+        google_calendar_id: target.calendarId,
+        google_event_id: target.eventId,
+        status: "pending",
+        attempt_count: 0,
+        next_attempt_at: now,
+        lease_token: null,
+        locked_until: null,
+        last_error: null,
+        completed_at: null,
+      },
+      select: { id: true },
+    });
+    queued.push(job.id);
+  }
+  return queued;
+}
+
 type GoogleCalendarDeletionTarget = {
   connection: GoogleCalendarConnectionRecord;
   calendarId: string;
@@ -1904,9 +2371,15 @@ export async function queueGoogleCalendarEventDeletionInTransaction(
 ) {
   const initialEvent = await tx.calendarEvent.findUnique({
     where: { id: eventId },
-    select: { id: true, workspace_id: true, created_by: true },
+    select: {
+      id: true,
+      workspace_id: true,
+      created_by: true,
+      responsible_user_id: true,
+    },
   });
   if (!initialEvent) return [] as string[];
+  const initialOrganizerUserId = googleCalendarOrganizerUserId(initialEvent);
 
   const [initialLinks, initialUpserts, currentConnection] = await Promise.all([
     tx.googleCalendarEventLink.findMany({
@@ -1925,7 +2398,7 @@ export async function queueGoogleCalendarEventDeletionInTransaction(
       where: {
         workspace_id_user_id: {
           workspace_id: initialEvent.workspace_id,
-          user_id: initialEvent.created_by,
+          user_id: initialOrganizerUserId,
         },
       },
       select: { id: true },
@@ -1945,7 +2418,12 @@ export async function queueGoogleCalendarEventDeletionInTransaction(
 
   const event = await tx.calendarEvent.findUnique({
     where: { id: eventId },
-    select: { id: true, workspace_id: true, created_by: true },
+    select: {
+      id: true,
+      workspace_id: true,
+      created_by: true,
+      responsible_user_id: true,
+    },
   });
   if (!event) return [] as string[];
 
@@ -1988,7 +2466,8 @@ export async function queueGoogleCalendarEventDeletionInTransaction(
   }
   const ownerConnection = connections.find(
     (connection) =>
-      connection.workspace_id === event.workspace_id && connection.user_id === event.created_by,
+      connection.workspace_id === event.workspace_id &&
+      connection.user_id === googleCalendarOrganizerUserId(event),
   ) as GoogleCalendarConnectionRecord | undefined;
   if (ownerConnection) {
     addTarget(
@@ -2246,13 +2725,13 @@ export async function processGoogleCalendarSyncJob(
 
       const complete = async () => {
         if (job.operation === "delete" && job.event_id) {
-          // A cancellation retains the local event, but its Google link must
-          // not later cause a manual sync to recreate it.
+          // Remove the relationship after a cancellation or organizer change;
+          // otherwise a later manual sync could treat the deleted remote item
+          // as the current organizer's event.
           await tx.googleCalendarEventLink.deleteMany({
             where: {
               event_id: job.event_id,
               connection_id: job.connection_id,
-              event: { status: "cancelled" },
             },
           });
         }
@@ -2329,7 +2808,11 @@ export async function processGoogleCalendarSyncJob(
         if (!job.event_id || !(await lockCalendarEventForGoogleSync(tx, job.event_id))) {
           return cancel();
         }
-        const result = await syncGoogleCalendarEvent(job.event_id, { force: job.force, db: tx });
+        const result = await syncGoogleCalendarEvent(job.event_id, {
+          force: job.force,
+          db: tx,
+          connectionId: job.connection_id,
+        });
         if (result.status === "synced") return complete();
         if (result.status === "failed") return fail();
         return cancel();
@@ -2435,7 +2918,10 @@ export async function syncUpcomingGoogleCalendarEvents(input: {
   const events = await prisma.calendarEvent.findMany({
     where: {
       workspace_id: input.workspaceId,
-      created_by: input.userId,
+      OR: [
+        { responsible_user_id: input.userId },
+        { responsible_user_id: null, created_by: input.userId },
+      ],
       starts_at: { gte: new Date(now.getTime() - MANUAL_SYNC_LOOKBACK_MS) },
     },
     orderBy: { starts_at: "asc" },

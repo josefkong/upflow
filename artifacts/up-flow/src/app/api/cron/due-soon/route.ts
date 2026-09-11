@@ -7,8 +7,12 @@ import {
 } from "@/lib/google-calendar";
 import { logError } from "@/lib/log-error";
 import { withErrorReporting } from "@/lib/with-error-reporting";
-import { isSocialMediaPublicationOverdue, SOCIAL_MEDIA_FIELD_NAMES } from "@/lib/social-media";
+import {
+  isSocialMediaPublicationOverdue,
+  SOCIAL_MEDIA_FIELD_NAMES,
+} from "@/lib/social-media";
 import { notifySocialMediaWorkflow } from "@/lib/social-media-notifications";
+import { processOverdueEquipmentReturns } from "@/lib/equipment-control";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +55,9 @@ async function processOverdueSocialMediaPosts(now: Date) {
       assignee_id: true,
       due_date: true,
       custom_field_values: {
-        where: { definition: { name: SOCIAL_MEDIA_FIELD_NAMES.publishingStatus } },
+        where: {
+          definition: { name: SOCIAL_MEDIA_FIELD_NAMES.publishingStatus },
+        },
         select: { value: true },
       },
     },
@@ -66,21 +72,34 @@ async function processOverdueSocialMediaPosts(now: Date) {
     },
     select: { id: true, project_id: true },
   });
-  const fieldByProjectId = new Map(fields.map((field) => [field.project_id, field.id]));
+  const fieldByProjectId = new Map(
+    fields.map((field) => [field.project_id, field.id]),
+  );
 
   let transitioned = 0;
   let notifications = 0;
   for (const post of posts) {
-    if (!post.social_media_plan_id || !post.due_date || !isSocialMediaPublicationOverdue(post.due_date, now)) {
+    if (
+      !post.social_media_plan_id ||
+      !post.due_date ||
+      !isSocialMediaPublicationOverdue(post.due_date, now)
+    ) {
       continue;
     }
     const status = post.custom_field_values[0]?.value;
-    if (status === "Published" || status === "Cancelled" || status === "Overdue") continue;
+    if (
+      status === "Published" ||
+      status === "Cancelled" ||
+      status === "Overdue"
+    )
+      continue;
     const fieldId = fieldByProjectId.get(post.project_id);
     if (!fieldId) continue;
 
     await prisma.customFieldValue.upsert({
-      where: { task_id_definition_id: { task_id: post.id, definition_id: fieldId } },
+      where: {
+        task_id_definition_id: { task_id: post.id, definition_id: fieldId },
+      },
       update: { value: "Overdue" },
       create: { task_id: post.id, definition_id: fieldId, value: "Overdue" },
     });
@@ -106,26 +125,30 @@ async function handler(req: NextRequest) {
   const now = new Date();
   const windowEnd = new Date(now.getTime() + DUE_SOON_WINDOW_MS);
 
-  const socialMediaOverdue = await processOverdueSocialMediaPosts(now);
+  const [socialMediaOverdue, equipmentOverdue] = await Promise.all([
+    processOverdueSocialMediaPosts(now),
+    processOverdueEquipmentReturns({ now }),
+  ]);
 
-  // Only assigned, not-yet-done tasks need reminders.
+  // Not-yet-done tasks with a primary assignee or followers need reminders.
   const tasks = await prisma.task.findMany({
     where: {
       due_date: { gte: now, lte: windowEnd },
-      assignee_id: { not: null },
       status: { not: "done" },
+      OR: [{ assignee_id: { not: null } }, { followers: { some: {} } }],
     },
     select: {
       id: true,
       title: true,
       due_date: true,
       assignee_id: true,
+      followers: { select: { user_id: true } },
     },
   });
 
   let created = 0;
   for (const task of tasks) {
-    if (!task.assignee_id || !task.due_date) continue;
+    if (!task.due_date) continue;
 
     // De-dupe: skip if an unread due_soon notification already exists for
     // this exact (task, due_date). We match on `data.due_date` directly in
@@ -133,31 +156,43 @@ async function handler(req: NextRequest) {
     // don't accidentally block today's reminder, and so multiple historical
     // rows can't hide a matching one from `findFirst`.
     const dueIso = task.due_date.toISOString();
-    const existing = await prisma.notification.findFirst({
-      where: {
-        type: "due_soon",
-        user_id: task.assignee_id,
-        task_id: task.id,
-        read: false,
-        data: { path: ["due_date"], equals: dueIso },
-      },
-      select: { id: true },
-    });
-    if (existing) continue;
+    const recipients = new Set([
+      task.assignee_id,
+      ...task.followers.map((follower) => follower.user_id),
+    ]);
+    recipients.delete(null);
 
-    try {
-      await prisma.notification.create({
-        data: {
+    for (const userId of recipients) {
+      if (!userId) continue;
+      const existing = await prisma.notification.findFirst({
+        where: {
           type: "due_soon",
-          user_id: task.assignee_id,
+          user_id: userId,
           task_id: task.id,
-          data: { due_date: dueIso, task_title: task.title },
+          read: false,
+          data: { path: ["due_date"], equals: dueIso },
         },
+        select: { id: true },
       });
-      await broadcastNotification(task.assignee_id);
-      created += 1;
-    } catch (err) {
-      logError("api:cron:due-soon:create", err, { task_id: task.id });
+      if (existing) continue;
+
+      try {
+        await prisma.notification.create({
+          data: {
+            type: "due_soon",
+            user_id: userId,
+            task_id: task.id,
+            data: { due_date: dueIso, task_title: task.title },
+          },
+        });
+        await broadcastNotification(userId);
+        created += 1;
+      } catch (err) {
+        logError("api:cron:due-soon:create", err, {
+          task_id: task.id,
+          user_id: userId,
+        });
+      }
     }
   }
 
@@ -178,6 +213,7 @@ async function handler(req: NextRequest) {
     scanned: tasks.length,
     created,
     social_media_overdue: socialMediaOverdue,
+    equipment_overdue: equipmentOverdue,
     window_hours: DUE_SOON_WINDOW_MS / 3_600_000,
     ran_at: now.toISOString(),
   });

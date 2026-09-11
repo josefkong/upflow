@@ -1082,7 +1082,7 @@ export default function CreativeBriefingForm({
                 }
                 className="h-10 w-full rounded-lg border border-[#2a5f9f] bg-[#09192f] pl-11 pr-11 text-sm text-white outline-none transition placeholder:text-[#7588a6] focus:border-[#3692ff] focus:ring-2 focus:ring-[#1879ff]/25 disabled:cursor-not-allowed disabled:opacity-60"
               />
-              <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#aac1e1]" />
+              <ChevronDown className="upflow-select-chevron pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-[#aac1e1]" />
               {brandPickerOpen && !companiesLoading ? (
                 <div className="absolute z-20 mt-2 max-h-48 w-full overflow-y-auto rounded-lg border border-[#2c5d98] bg-[#07162c] p-1 shadow-[0_14px_30px_rgba(0,0,0,0.34)]">
                   {filteredCompanies.map((company) => (
@@ -1884,7 +1884,7 @@ function SelectField({
           </option>
         ))}
       </select>
-      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#a8bee3]" />
+      <ChevronDown className="upflow-select-chevron pointer-events-none absolute top-1/2 h-5 w-5 -translate-y-1/2 text-[#a8bee3]" />
     </div>
   );
 }

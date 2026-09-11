@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
+import { CreateActionButton } from "@/components/ui/create-action-button";
 import type { TaskDrawerStatus } from "@/components/dashboard/dashboard-page-types";
 import { priorityLabel } from "@/components/dashboard/dashboard-utils";
 import type { CalendarEvent, Task } from "@/lib/types";
@@ -82,14 +83,13 @@ export function TodayFocusPanel({
             <p className="mt-1 text-xs text-muted-foreground">
               {t("dashboard.todayFocusHint")}
             </p>
-            <button
-              type="button"
+            <CreateActionButton
               onClick={onCreateTask}
-              className="upflow-gradient-button mt-4 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              className="mt-4"
             >
               <Plus className="h-4 w-4" />
               {t("dashboard.newTask")}
-            </button>
+            </CreateActionButton>
           </div>
         ) : (
           <>
@@ -239,12 +239,13 @@ export function TaskRow({
             <button
               role="menuitem"
               type="button"
-              disabled={disabled || task.status === "done"}
+              disabled
+              title={t("task.automaticMovementOnly")}
               onClick={() => {
                 setMenuOpen(false);
                 onMarkDone();
               }}
-              className="w-full px-3 py-2 text-left hover:bg-white/5 focus:outline-none focus-visible:bg-white/10 disabled:opacity-40"
+              className="w-full cursor-not-allowed px-3 py-2 text-left focus:outline-none disabled:opacity-40"
             >
               {t("status.done")}
             </button>
@@ -353,7 +354,10 @@ export function TaskStatusDrawer({
                 onOpen={() => onOpenTask(task)}
                 onMarkDone={() => onStatusChange(task, "done")}
                 onDelete={() => {
-                  if (confirm(t("task.deleteNamedConfirm", { title: task.title }))) onDelete(task);
+                  if (
+                    confirm(t("task.deleteNamedConfirm", { title: task.title }))
+                  )
+                    onDelete(task);
                 }}
                 disabled={updating}
               />

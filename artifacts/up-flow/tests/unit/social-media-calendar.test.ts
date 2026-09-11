@@ -78,9 +78,9 @@ test("Social Media calendar is a real Creative & Design list with a secure plann
   assert.match(projectPage, /isSocialMediaProject/);
   assert.match(projectPage, /isSocialMediaCalendarListName/);
   assert.match(projectPage, /SocialMediaCalendar/);
-  assert.match(component, /Operational alerts/);
-  assert.match(component, /clients without a content plan/i);
-  assert.match(component, /additional creative item/);
+  assert.match(component, /socialCalendar\.operationalAlerts/);
+  assert.match(component, /socialCalendar\.alert\.clientsWithoutPlan/);
+  assert.match(component, /socialCalendar\.alert\.additionalItems/);
   assert.match(component, /content_tasks\.map/);
   assert.match(component, /hydrateSocialMediaTask/);
   assert.match(component, /hydrateMoodboardTask/);
@@ -90,7 +90,7 @@ test("Social Media calendar is a real Creative & Design list with a secure plann
   assert.match(component, /awaitingApproval: planPosts\.filter/);
   assert.match(component, /APP_TIME_ZONE/);
   assert.match(component, /clientPostingGap/);
-  assert.match(component, /Moodboard: \{plan\.moodboard_status\}/);
+  assert.match(component, /Moodboard: \{localizeSocialStatus\(plan\.moodboard_status, t\)\}/);
   assert.match(component, /Publishing/);
   assert.match(component, /Moodboard/);
   assert.match(planRoute, /canContributeToProject/);

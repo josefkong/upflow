@@ -13,10 +13,13 @@ import {
   Copy,
   EyeOff,
 } from "lucide-react";
+import type { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
 import type { Project, Space, Folder as FolderT } from "@/lib/types";
 import { ProjectRow } from "@/components/layout/sidebar/project-row";
 import { useLanguage } from "@/components/language-provider";
+import { localizeSpaceName } from "@/lib/i18n/project-name-translations";
 import { cn } from "@/lib/utils";
+import { prefetchSpacePage } from "@/lib/space-page-cache";
 
 const MAX_VISIBLE_CHILDREN = 8;
 
@@ -47,6 +50,7 @@ export interface NodeHandlers {
 
 interface SpaceNodeProps extends NodeHandlers {
   space: Space;
+  dragHandleProps?: DraggableProvidedDragHandleProps | null;
   looseLists: Project[];
   foldersBySpace: FolderT[];
   childFoldersByParent: (id: string) => FolderT[];
@@ -54,8 +58,45 @@ interface SpaceNodeProps extends NodeHandlers {
   isSearching: boolean;
 }
 
+interface ProjectRowsProps {
+  items: Project[];
+  pathname: string;
+  onNavigate?: () => void;
+  canManageWorkspace: boolean;
+  loadPanel: (options?: { force?: boolean; query?: string }) => void;
+  setMoveTarget: (project: Project) => void;
+}
+
+function ProjectRows({
+  items,
+  pathname,
+  onNavigate,
+  canManageWorkspace,
+  loadPanel,
+  setMoveTarget,
+}: ProjectRowsProps) {
+  return (
+    <div className="space-y-1 rounded-xl">
+      {items.map((project) => (
+        <ProjectRow
+          key={project.id}
+          project={project}
+          href={`/projects/${project.id}`}
+          onMove={() => setMoveTarget(project)}
+          onNavigate={onNavigate}
+          onDeleted={() => loadPanel({ force: true })}
+          onDuplicated={() => loadPanel({ force: true })}
+          isActive={pathname === `/projects/${project.id}`}
+          canManageWorkspace={canManageWorkspace}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function SpaceNode({
   space: sp,
+  dragHandleProps,
   looseLists,
   foldersBySpace: spaceFolders,
   childFoldersByParent,
@@ -80,17 +121,18 @@ export function SpaceNode({
   handleDeleteFolder,
   handleDuplicateFolder,
 }: SpaceNodeProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const spaceDisplayName = localizeSpaceName(sp.name, language);
   const isCollapsed = !!collapsed[sp.id];
   const menuOpen = menuOpenId === sp.id;
   const isActive = pathname === `/spaces/${sp.id}`;
-  const directChildCount = spaceFolders.length + looseLists.length;
-  const pendingTodoCount = sp.pending_todo_count ?? 0;
-  const pendingTodoLabel = t("sidebar.pendingTodoCount", { count: pendingTodoCount });
-  const visibleFolders = isSearching ? spaceFolders : spaceFolders.slice(0, MAX_VISIBLE_CHILDREN);
-  const remainingListSlots = isSearching ? looseLists.length : Math.max(0, MAX_VISIBLE_CHILDREN - visibleFolders.length);
-  const visibleLooseLists = isSearching ? looseLists : looseLists.slice(0, remainingListSlots);
-  const hiddenChildCount = directChildCount - visibleFolders.length - visibleLooseLists.length;
+  const badgeCount = sp.flow_task_count ?? sp.pending_todo_count ?? 0;
+  const badgeLabel = t(
+    sp.flow_task_count !== undefined
+      ? "sidebar.flowTaskCount"
+      : "sidebar.pendingTodoCount",
+    { count: badgeCount },
+  );
   return (
     <div className="rounded-2xl">
       <div
@@ -106,9 +148,15 @@ export function SpaceNode({
         )}
         <button
           onClick={() => toggleCollapse(sp.id)}
-          aria-label={t(isCollapsed ? "sidebar.expandSpace" : "sidebar.collapseSpace", { name: sp.name })}
+          aria-label={t(
+            isCollapsed ? "sidebar.expandSpace" : "sidebar.collapseSpace",
+            { name: spaceDisplayName },
+          )}
           aria-expanded={!isCollapsed}
-          title={t(isCollapsed ? "sidebar.expandSpace" : "sidebar.collapseSpace", { name: sp.name })}
+          title={t(
+            isCollapsed ? "sidebar.expandSpace" : "sidebar.collapseSpace",
+            { name: spaceDisplayName },
+          )}
           className="relative z-10 flex h-7 w-6 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 dark:text-blue-100/[0.55] dark:hover:bg-white/10"
         >
           {isCollapsed ? (
@@ -117,19 +165,37 @@ export function SpaceNode({
             <ChevronDown className="w-3.5 h-3.5" />
           )}
         </button>
-        <span
-          className={cn(
-            "relative z-10 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl text-base leading-none ring-1",
-            isActive
-              ? "bg-blue-500/20 ring-blue-300/25 shadow-[0_0_18px_rgba(59,130,246,0.22)]"
-              : "bg-muted/50 ring-border dark:bg-white/[0.15] dark:ring-white/10",
-          )}
-        >
-          {sp.icon || "UP"}
-        </span>
+        {dragHandleProps ? (
+          <span
+            {...dragHandleProps}
+            aria-label={t("sidebar.reorderSpace", { name: spaceDisplayName })}
+            title={t("sidebar.reorderSpace", { name: spaceDisplayName })}
+            className={cn(
+              "relative z-10 flex h-8 w-8 flex-shrink-0 cursor-grab touch-none items-center justify-center rounded-xl text-base leading-none ring-1 transition active:cursor-grabbing focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+              isActive
+                ? "bg-blue-500/20 ring-blue-300/25 shadow-[0_0_18px_rgba(59,130,246,0.22)]"
+                : "bg-muted/50 ring-border hover:ring-primary/40 dark:bg-white/[0.15] dark:ring-white/10",
+            )}
+          >
+            {sp.icon || "UP"}
+          </span>
+        ) : (
+          <span
+            className={cn(
+              "relative z-10 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl text-base leading-none ring-1",
+              isActive
+                ? "bg-blue-500/20 ring-blue-300/25 shadow-[0_0_18px_rgba(59,130,246,0.22)]"
+                : "bg-muted/50 ring-border dark:bg-white/[0.15] dark:ring-white/10",
+            )}
+          >
+            {sp.icon || "UP"}
+          </span>
+        )}
         <Link
           href={`/spaces/${sp.id}`}
           onClick={onNavigate}
+          onPointerEnter={() => void prefetchSpacePage(sp.id)}
+          onFocus={() => void prefetchSpacePage(sp.id)}
           className={cn(
             "relative z-10 min-w-0 flex-1 rounded-xl px-1.5 py-1.5 text-left text-xs font-semibold truncate outline-none transition-colors",
             isActive
@@ -137,14 +203,14 @@ export function SpaceNode({
               : "text-foreground/90 hover:text-foreground focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-primary/60 dark:focus-visible:bg-white/10",
           )}
         >
-          {sp.name}
+          {spaceDisplayName}
         </Link>
         <span
-          aria-label={pendingTodoLabel}
-          title={pendingTodoLabel}
+          aria-label={badgeLabel}
+          title={badgeLabel}
           className={cn(
             "relative z-10 ml-1 flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums",
-            pendingTodoCount > 0
+            badgeCount > 0
               ? isActive
                 ? "bg-amber-300/20 text-amber-950 ring-1 ring-amber-200/35 dark:bg-amber-300/[0.18] dark:text-amber-100 dark:ring-amber-200/25"
                 : "bg-amber-500/10 text-amber-700 ring-1 ring-amber-500/20 dark:bg-amber-300/[0.14] dark:text-amber-100 dark:ring-amber-200/20"
@@ -153,7 +219,7 @@ export function SpaceNode({
                 : "bg-muted text-muted-foreground dark:bg-white/[0.15]",
           )}
         >
-          {pendingTodoCount}
+          {badgeCount}
         </span>
         <div
           className="relative z-20 flex flex-shrink-0 items-center"
@@ -168,7 +234,7 @@ export function SpaceNode({
               e.stopPropagation();
               setMenuOpenId((id) => (id === sp.id ? null : sp.id));
             }}
-            aria-label={t("sidebar.actionsFor", { name: sp.name })}
+            aria-label={t("sidebar.actionsFor", { name: spaceDisplayName })}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             data-menu-trigger
@@ -193,36 +259,48 @@ export function SpaceNode({
               </button>
               {canManageWorkspace && (
                 <>
-              <button
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpenId(() => null);
-                  setCreateListFor({ kind: "space", space: sp });
-                }}
-                className="w-full flex items-center gap-2 border-t border-border px-3 py-2 text-left hover:bg-accent dark:border-white/5 dark:hover:bg-white/5"
-              >
-                <Plus className="w-3 h-3" /> {t("sidebar.newProject")}
-              </button>
-              <button
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpenId(() => null);
-                  setCreateFolderTarget({ kind: "space", space: sp });
-                }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent dark:hover:bg-white/5"
-              >
-                <Folder className="w-3 h-3" /> {t("folder.newFolder")}
-              </button>
-              <button
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpenId(() => null);
-                  setRenameTarget(sp);
-                }}
-                className="w-full flex items-center gap-2 border-t border-border px-3 py-2 text-left hover:bg-accent dark:border-white/5 dark:hover:bg-white/5"
-              >
-                <Pencil className="w-3 h-3" /> {t("common.rename")}
-              </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpenId(() => null);
+                      setCreateListFor({ kind: "space", space: sp });
+                    }}
+                    className="w-full flex items-center gap-2 border-t border-border px-3 py-2 text-left hover:bg-accent dark:border-white/5 dark:hover:bg-white/5"
+                  >
+                    <Plus className="w-3 h-3" /> {t("sidebar.newProject")}
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpenId(() => null);
+                      setCreateFolderTarget({ kind: "space", space: sp });
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent dark:hover:bg-white/5"
+                  >
+                    <Folder className="w-3 h-3" /> {t("folder.newFolder")}
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpenId(() => null);
+                      setRenameTarget(sp);
+                    }}
+                    className="w-full flex items-center gap-2 border-t border-border px-3 py-2 text-left hover:bg-accent dark:border-white/5 dark:hover:bg-white/5"
+                  >
+                    <Pencil className="w-3 h-3" /> {t("common.rename")}
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpenId(() => null);
+                      handleDeleteSpace(sp);
+                    }}
+                    className="w-full flex items-center gap-2 border-t border-border px-3 py-2 text-left text-upflow-danger hover:bg-upflow-danger/10 dark:border-white/5"
+                  >
+                    <Trash2 className="w-3 h-3" /> {t("common.delete")}
+                  </button>
+                </>
+              )}
               <button
                 role="menuitem"
                 onClick={() => {
@@ -233,18 +311,6 @@ export function SpaceNode({
               >
                 <UserPlus className="w-3 h-3" /> {t("space.shareSpace")}
               </button>
-              <button
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpenId(() => null);
-                  handleDeleteSpace(sp);
-                }}
-                className="w-full flex items-center gap-2 border-t border-border px-3 py-2 text-left text-upflow-danger hover:bg-upflow-danger/10 dark:border-white/5"
-              >
-                <Trash2 className="w-3 h-3" /> {t("common.delete")}
-              </button>
-                </>
-              )}
             </div>
           )}
         </div>
@@ -253,14 +319,16 @@ export function SpaceNode({
       {!isCollapsed && (
         <div className="ml-6 mt-1.5 space-y-1 border-l border-border pl-3 dark:border-blue-300/10">
           {spaceFolders.length === 0 && looseLists.length === 0 && (
-            <p className={cn(
-              "rounded-xl border border-border/70 bg-muted/25 px-2 py-1.5 text-[11px] text-muted-foreground/70 italic dark:border-white/5 dark:bg-white/[0.15]",
-              !isActive && !isSearching && "hidden",
-            )}>
+            <p
+              className={cn(
+                "rounded-xl border border-border/70 bg-muted/25 px-2 py-1.5 text-[11px] text-muted-foreground/70 italic dark:border-white/5 dark:bg-white/[0.15]",
+                !isActive && !isSearching && "hidden",
+              )}
+            >
               {t("sidebar.noFoldersOrProjects")}
             </p>
           )}
-          {visibleFolders.map((f) => (
+          {spaceFolders.map((f) => (
             <FolderNode
               key={f.id}
               folder={f}
@@ -284,28 +352,14 @@ export function SpaceNode({
               handleDuplicateFolder={handleDuplicateFolder}
             />
           ))}
-          {visibleLooseLists.map((p) => (
-            <ProjectRow
-              key={p.id}
-              project={p}
-              href={`/projects/${p.id}`}
-              onMove={() => setMoveTarget(p)}
-              onNavigate={onNavigate}
-              onDeleted={() => loadPanel({ force: true })}
-              onDuplicated={() => loadPanel({ force: true })}
-              isActive={pathname === `/projects/${p.id}`}
-              canManageWorkspace={canManageWorkspace}
-            />
-          ))}
-          {hiddenChildCount > 0 && (
-            <Link
-              href={`/spaces/${sp.id}?tab=browse`}
-              onClick={onNavigate}
-              className="block rounded-xl border border-primary/[0.35] bg-primary/[0.15] px-2 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/10 dark:border-blue-300/10 dark:text-blue-200 dark:hover:bg-blue-500/10"
-            >
-              {t("sidebar.viewAllInSpace", { count: hiddenChildCount })}
-            </Link>
-          )}
+          <ProjectRows
+            items={looseLists}
+            pathname={pathname}
+            onNavigate={onNavigate}
+            canManageWorkspace={canManageWorkspace}
+            loadPanel={loadPanel}
+            setMoveTarget={setMoveTarget}
+          />
         </div>
       )}
     </div>
@@ -365,10 +419,6 @@ export function FolderNode({
   const isActive = pathname === `/folders/${f.id}`;
   const childFolders = childFoldersByParent(f.id);
   const directChildCount = childFolders.length + items.length;
-  const visibleChildFolders = isSearching ? childFolders : childFolders.slice(0, MAX_VISIBLE_CHILDREN);
-  const remainingItemSlots = isSearching ? items.length : Math.max(0, MAX_VISIBLE_CHILDREN - visibleChildFolders.length);
-  const visibleItems = isSearching ? items : items.slice(0, remainingItemSlots);
-  const hiddenChildCount = directChildCount - visibleChildFolders.length - visibleItems.length;
   return (
     <div className="rounded-xl">
       <div
@@ -384,9 +434,15 @@ export function FolderNode({
         )}
         <button
           onClick={() => toggleCollapse(f.id)}
-          aria-label={t(fCollapsed ? "sidebar.expandFolder" : "sidebar.collapseFolder", { name: f.name })}
+          aria-label={t(
+            fCollapsed ? "sidebar.expandFolder" : "sidebar.collapseFolder",
+            { name: f.name },
+          )}
           aria-expanded={!fCollapsed}
-          title={t(fCollapsed ? "sidebar.expandFolder" : "sidebar.collapseFolder", { name: f.name })}
+          title={t(
+            fCollapsed ? "sidebar.expandFolder" : "sidebar.collapseFolder",
+            { name: f.name },
+          )}
           className="relative z-10 flex h-6 w-5 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 dark:hover:bg-white/10"
         >
           {fCollapsed ? (
@@ -408,7 +464,9 @@ export function FolderNode({
           <Folder
             className={cn(
               "h-3.5 w-3.5 flex-shrink-0",
-              isActive ? "text-primary dark:text-blue-200" : "text-muted-foreground",
+              isActive
+                ? "text-primary dark:text-blue-200"
+                : "text-muted-foreground",
             )}
           />
           <span className="truncate">{f.name}</span>
@@ -419,85 +477,85 @@ export function FolderNode({
           </span>
         )}
         {canManageWorkspace && (
-        <div
-          className="relative z-20 flex flex-shrink-0 items-center"
-          onMouseDown={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setMenuOpenId((id) => (id === f.id ? null : f.id));
-            }}
-            aria-label={t("sidebar.actionsFor", { name: f.name })}
-            aria-haspopup="menu"
-            aria-expanded={fMenuOpen}
-            data-menu-trigger
-            className="relative z-10 flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 dark:hover:bg-white/10"
+          <div
+            className="relative z-20 flex flex-shrink-0 items-center"
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           >
-            <MoreHorizontal className="w-3 h-3" />
-          </button>
-          {fMenuOpen && (
-            <div
-              role="menu"
-              className="absolute right-0 top-full z-50 mt-1 w-40 overflow-hidden rounded-xl border border-border bg-popover/95 text-xs text-popover-foreground shadow-xl backdrop-blur-xl dark:border-blue-300/10 dark:bg-[#080d1d]/95 dark:text-foreground dark:shadow-[0_18px_50px_rgba(0,0,0,0.35)]"
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setMenuOpenId((id) => (id === f.id ? null : f.id));
+              }}
+              aria-label={t("sidebar.actionsFor", { name: f.name })}
+              aria-haspopup="menu"
+              aria-expanded={fMenuOpen}
+              data-menu-trigger
+              className="relative z-10 flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 dark:hover:bg-white/10"
             >
-              <button
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpenId(() => null);
-                  setCreateListFor({ kind: "folder", folder: f });
-                }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent dark:hover:bg-white/5"
+              <MoreHorizontal className="w-3 h-3" />
+            </button>
+            {fMenuOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 top-full z-50 mt-1 w-40 overflow-hidden rounded-xl border border-border bg-popover/95 text-xs text-popover-foreground shadow-xl backdrop-blur-xl dark:border-blue-300/10 dark:bg-[#080d1d]/95 dark:text-foreground dark:shadow-[0_18px_50px_rgba(0,0,0,0.35)]"
               >
-                <Plus className="w-3 h-3" /> {t("sidebar.newProject")}
-              </button>
-              <button
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpenId(() => null);
-                  setCreateFolderTarget({ kind: "folder", folder: f });
-                }}
-                className="w-full flex items-center gap-2 border-t border-border px-3 py-2 text-left hover:bg-accent dark:border-white/5 dark:hover:bg-white/5"
-              >
-                <Folder className="w-3 h-3" /> {t("folder.newFolder")}
-              </button>
-              <button
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpenId(() => null);
-                  setRenameFolderTarget(f);
-                }}
-                className="w-full flex items-center gap-2 border-t border-border px-3 py-2 text-left hover:bg-accent dark:border-white/5 dark:hover:bg-white/5"
-              >
-                <Pencil className="w-3 h-3" /> {t("common.rename")}
-              </button>
-              <button
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpenId(() => null);
-                  handleDuplicateFolder(f);
-                }}
-                className="w-full flex items-center gap-2 border-t border-border px-3 py-2 text-left hover:bg-accent dark:border-white/5 dark:hover:bg-white/5"
-              >
-                <Copy className="w-3 h-3" /> {t("common.duplicate")}
-              </button>
-              <button
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpenId(() => null);
-                  handleDeleteFolder(f);
-                }}
-                className="w-full flex items-center gap-2 border-t border-border px-3 py-2 text-left text-upflow-danger hover:bg-upflow-danger/10 dark:border-white/5"
-              >
-                <Trash2 className="w-3 h-3" /> {t("common.delete")}
-              </button>
-            </div>
-          )}
-        </div>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpenId(() => null);
+                    setCreateListFor({ kind: "folder", folder: f });
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent dark:hover:bg-white/5"
+                >
+                  <Plus className="w-3 h-3" /> {t("sidebar.newProject")}
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpenId(() => null);
+                    setCreateFolderTarget({ kind: "folder", folder: f });
+                  }}
+                  className="w-full flex items-center gap-2 border-t border-border px-3 py-2 text-left hover:bg-accent dark:border-white/5 dark:hover:bg-white/5"
+                >
+                  <Folder className="w-3 h-3" /> {t("folder.newFolder")}
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpenId(() => null);
+                    setRenameFolderTarget(f);
+                  }}
+                  className="w-full flex items-center gap-2 border-t border-border px-3 py-2 text-left hover:bg-accent dark:border-white/5 dark:hover:bg-white/5"
+                >
+                  <Pencil className="w-3 h-3" /> {t("common.rename")}
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpenId(() => null);
+                    handleDuplicateFolder(f);
+                  }}
+                  className="w-full flex items-center gap-2 border-t border-border px-3 py-2 text-left hover:bg-accent dark:border-white/5 dark:hover:bg-white/5"
+                >
+                  <Copy className="w-3 h-3" /> {t("common.duplicate")}
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpenId(() => null);
+                    handleDeleteFolder(f);
+                  }}
+                  className="w-full flex items-center gap-2 border-t border-border px-3 py-2 text-left text-upflow-danger hover:bg-upflow-danger/10 dark:border-white/5"
+                >
+                  <Trash2 className="w-3 h-3" /> {t("common.delete")}
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
       {!fCollapsed && (
@@ -513,7 +571,7 @@ export function FolderNode({
             </p>
           ) : (
             <>
-              {visibleChildFolders.map((child) => (
+              {childFolders.map((child) => (
                 <FolderNode
                   key={child.id}
                   folder={child}
@@ -537,28 +595,14 @@ export function FolderNode({
                   handleDuplicateFolder={handleDuplicateFolder}
                 />
               ))}
-              {visibleItems.map((p) => (
-              <ProjectRow
-                key={p.id}
-                project={p}
-                href={`/projects/${p.id}`}
-                onMove={() => setMoveTarget(p)}
+              <ProjectRows
+                items={items}
+                pathname={pathname}
                 onNavigate={onNavigate}
-                onDeleted={() => loadPanel({ force: true })}
-                onDuplicated={() => loadPanel({ force: true })}
-                isActive={pathname === `/projects/${p.id}`}
                 canManageWorkspace={canManageWorkspace}
+                loadPanel={loadPanel}
+                setMoveTarget={setMoveTarget}
               />
-              ))}
-              {hiddenChildCount > 0 && (
-                <Link
-                  href={`/folders/${f.id}`}
-                  onClick={onNavigate}
-                  className="block rounded-xl border border-primary/[0.35] bg-primary/[0.15] px-2 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/10 dark:border-blue-300/10 dark:text-blue-200 dark:hover:bg-blue-500/10"
-                >
-                  {t("sidebar.viewAllInFolder", { count: hiddenChildCount })}
-                </Link>
-              )}
             </>
           )}
         </div>
@@ -593,7 +637,9 @@ export function UnassignedNode({
   const { t } = useLanguage();
   const id = "__unassigned__";
   const isCollapsed = !!collapsed[id];
-  const visibleItems = isSearching ? items : items.slice(0, MAX_VISIBLE_CHILDREN);
+  const visibleItems = isSearching
+    ? items
+    : items.slice(0, MAX_VISIBLE_CHILDREN);
   const hiddenCount = items.length - visibleItems.length;
   return (
     <div className="mt-3 rounded-2xl border border-border/80 bg-muted/25 p-1.5 dark:border-white/[0.15] dark:bg-white/[0.15]">
@@ -637,15 +683,15 @@ export function UnassignedNode({
               {t("sidebar.nothingHere")}
             </p>
           ) : (
-            visibleItems.map((p) => (
+            visibleItems.map((project) => (
               <ProjectRow
-                key={p.id}
-                project={p}
-                onMove={() => setMoveTarget(p)}
+                key={project.id}
+                project={project}
+                onMove={() => setMoveTarget(project)}
                 onNavigate={onNavigate}
                 onDeleted={() => loadPanel({ force: true })}
                 onDuplicated={() => loadPanel({ force: true })}
-                isActive={pathname === `/projects/${p.id}`}
+                isActive={pathname === `/projects/${project.id}`}
                 canManageWorkspace={canManageWorkspace}
               />
             ))

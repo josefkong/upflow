@@ -50,8 +50,16 @@ html.light {
 
 html.light body {
   background:
-    radial-gradient(circle at 14% -12%, rgba(37, 99, 235, 0.12), transparent 36%),
-    radial-gradient(circle at 90% -10%, rgba(124, 58, 237, 0.1), transparent 34%),
+    radial-gradient(
+      circle at 14% -12%,
+      rgba(37, 99, 235, 0.12),
+      transparent 36%
+    ),
+    radial-gradient(
+      circle at 90% -10%,
+      rgba(124, 58, 237, 0.1),
+      transparent 34%
+    ),
     linear-gradient(180deg, #f8fafc 0%, #eef4ff 48%, #f8fafc 100%);
 }
 
@@ -59,8 +67,24 @@ html.light select {
   color-scheme: light;
 }
 
-html.light input[type="date"]::-webkit-calendar-picker-indicator {
+html.light input[type="date"]::-webkit-calendar-picker-indicator,
+html.light input[type="time"]::-webkit-calendar-picker-indicator {
   filter: none;
+}
+
+.upflow-date-time-input {
+  position: relative;
+  padding-inline: 0.75rem !important;
+  padding-right: 2.5rem !important;
+}
+
+.upflow-date-time-input::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  opacity: 0;
 }
 
 html.light .glass,
@@ -134,14 +158,18 @@ html.light .upflow-shell-control:hover {
 html.light .upflow-sidebar-panel {
   background:
     radial-gradient(circle at 26% 0%, rgba(37, 99, 235, 0.08), transparent 36%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.94)) !important;
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.98),
+      rgba(241, 245, 249, 0.94)
+    ) !important;
   border-right-color: rgba(148, 163, 184, 0.28) !important;
   color: #0f172a;
   box-shadow: inset -1px 0 0 rgba(148, 163, 184, 0.18) !important;
 }
 
 html.light .upflow-sidebar-sticky {
-  background: rgba(248, 250, 252, 0.94) !important;
+  background: #f8fafc !important;
 }
 
 html.light .upflow-sidebar-panel .text-white,
@@ -164,7 +192,11 @@ html.light .upflow-workspace-card,
 html.light .upflow-workspace-menu {
   background:
     radial-gradient(circle at 12% 0%, rgba(37, 99, 235, 0.08), transparent 36%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.92)) !important;
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.96),
+      rgba(248, 250, 252, 0.92)
+    ) !important;
   border-color: rgba(148, 163, 184, 0.34) !important;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.95),
@@ -184,8 +216,16 @@ html.light .upflow-workspace-control {
 html.light .command-dashboard-shell::before {
   background:
     radial-gradient(circle at 18% 8%, rgba(37, 99, 235, 0.1), transparent 28%),
-    radial-gradient(circle at 84% 10%, rgba(16, 185, 129, 0.08), transparent 28%),
-    radial-gradient(circle at 48% 46%, rgba(14, 165, 233, 0.06), transparent 34%);
+    radial-gradient(
+      circle at 84% 10%,
+      rgba(16, 185, 129, 0.08),
+      transparent 28%
+    ),
+    radial-gradient(
+      circle at 48% 46%,
+      rgba(14, 165, 233, 0.06),
+      transparent 34%
+    );
   opacity: 0.7;
 }
 
@@ -279,7 +319,11 @@ html.light .upflow-task-card [class*="border-white"] {
 html.light .upflow-client-card {
   background:
     radial-gradient(circle at 16% 0%, rgba(37, 99, 235, 0.08), transparent 30%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.93)) !important;
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.98),
+      rgba(248, 250, 252, 0.93)
+    ) !important;
   border-color: rgba(148, 163, 184, 0.34) !important;
   color: #0f172a;
   box-shadow:
@@ -364,15 +408,27 @@ html.light .support-onboarding-form-shell [class*="bg-[#"] {
   background-color: rgba(255, 255, 255, 0.86) !important;
 }
 
-html.light .onboarding-queue-shell :is(.text-white, .text-slate-100, .text-slate-200),
-html.light .marketing-b2b-form-shell :is(.text-white, .text-slate-100, .text-slate-200),
-html.light .support-onboarding-form-shell :is(.text-white, .text-slate-100, .text-slate-200) {
+html.light
+  .onboarding-queue-shell
+  :is(.text-white, .text-slate-100, .text-slate-200),
+html.light
+  .marketing-b2b-form-shell
+  :is(.text-white, .text-slate-100, .text-slate-200),
+html.light
+  .support-onboarding-form-shell
+  :is(.text-white, .text-slate-100, .text-slate-200) {
   color: #0f172a !important;
 }
 
-html.light .onboarding-queue-shell :is(.text-slate-300, .text-slate-400, .text-slate-500),
-html.light .marketing-b2b-form-shell :is(.text-slate-300, .text-slate-400, .text-slate-500),
-html.light .support-onboarding-form-shell :is(.text-slate-300, .text-slate-400, .text-slate-500) {
+html.light
+  .onboarding-queue-shell
+  :is(.text-slate-300, .text-slate-400, .text-slate-500),
+html.light
+  .marketing-b2b-form-shell
+  :is(.text-slate-300, .text-slate-400, .text-slate-500),
+html.light
+  .support-onboarding-form-shell
+  :is(.text-slate-300, .text-slate-400, .text-slate-500) {
   color: #475569 !important;
 }
 
@@ -399,9 +455,101 @@ html.light .onboarding-queue-shell [class*="border-slate"] {
   border-color: rgba(148, 163, 184, 0.38) !important;
 }
 
+html.light .upflow-task-detail {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(37, 99, 235, 0.08), transparent 32%),
+    linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%) !important;
+  color: #0f172a;
+}
+
+html.light .upflow-task-detail-header {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-color: rgba(148, 163, 184, 0.32) !important;
+  box-shadow: 0 10px 32px rgba(15, 23, 42, 0.06);
+}
+
+html.light .upflow-task-detail-main {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(37, 99, 235, 0.06), transparent 28%),
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.98),
+      rgba(248, 250, 252, 0.94)
+    ) !important;
+  border-color: rgba(148, 163, 184, 0.34) !important;
+  color: #0f172a;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 22px 56px rgba(15, 23, 42, 0.1) !important;
+}
+
+html.light
+  .upflow-task-detail
+  :is(.text-white, .text-slate-100, .text-slate-200) {
+  color: #0f172a !important;
+}
+
+html.light .upflow-task-detail :is(.text-slate-300, .text-slate-400) {
+  color: #475569 !important;
+}
+
+html.light .upflow-task-detail :is(.text-slate-500, .text-slate-600) {
+  color: #64748b !important;
+}
+
+html.light .upflow-task-detail [class*="border-white"] {
+  border-color: rgba(148, 163, 184, 0.32) !important;
+}
+
+html.light .upflow-task-detail [class*="bg-[#"] {
+  background-color: rgba(255, 255, 255, 0.8) !important;
+}
+
+html.light .upflow-task-detail [class*="bg-black"] {
+  background-color: rgba(241, 245, 249, 0.84) !important;
+}
+
+html.light .upflow-task-detail :is(input, textarea, select) {
+  caret-color: #1d4ed8;
+}
+
+html.light .upflow-task-detail :is(input, textarea)::placeholder {
+  color: #94a3b8 !important;
+}
+
+html.light .upflow-task-detail select option {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+html.light .upflow-task-detail .text-rose-300,
+html.light .upflow-task-detail .text-rose-200 {
+  color: #be123c !important;
+}
+
+html.light .upflow-task-detail .text-emerald-300 {
+  color: #047857 !important;
+}
+
+html.light .upflow-task-detail .text-amber-100,
+html.light .upflow-task-detail .text-amber-200 {
+  color: #b45309 !important;
+}
+
+html.light .upflow-task-detail .text-blue-100,
+html.light .upflow-task-detail .text-blue-200,
+html.light .upflow-task-detail .text-sky-200,
+html.light .upflow-task-detail .text-blue-300 {
+  color: #1d4ed8 !important;
+}
+
 /* Performance skin */
 body.upflow-performance {
-  background: linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--background)) 100%) !important;
+  background: linear-gradient(
+    180deg,
+    hsl(var(--background)) 0%,
+    hsl(var(--background)) 100%
+  ) !important;
 }
 
 body.upflow-performance [class*="backdrop-blur"] {
@@ -446,17 +594,27 @@ html.dark body.upflow-performance .command-section-panel,
 html.dark body.upflow-performance .upflow-card,
 html.dark body.upflow-performance .upflow-kanban-column,
 html.dark body.upflow-performance .upflow-task-card {
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 8px 22px rgba(0,0,0,0.18) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 8px 22px rgba(0, 0, 0, 0.18) !important;
 }
 
 html.dark body.upflow-performance .glass,
 html.dark body.upflow-performance .glass-strong,
 html.dark body.upflow-performance .glass-header {
-  background: linear-gradient(145deg, rgba(14, 20, 36, 0.94), rgba(5, 9, 22, 0.92)) !important;
+  background: linear-gradient(
+    145deg,
+    rgba(14, 20, 36, 0.94),
+    rgba(5, 9, 22, 0.92)
+  ) !important;
 }
 
 html.dark body.upflow-performance .glass-rail {
-  background: linear-gradient(180deg, rgba(4, 8, 20, 0.98), rgba(5, 8, 22, 0.96)) !important;
+  background: linear-gradient(
+    180deg,
+    rgba(4, 8, 20, 0.98),
+    rgba(5, 8, 22, 0.96)
+  ) !important;
 }
 
 html.dark body.upflow-performance .upflow-panel,
@@ -467,7 +625,11 @@ html.dark body.upflow-performance .command-section-panel,
 html.dark body.upflow-performance .upflow-card,
 html.dark body.upflow-performance .upflow-kanban-column,
 html.dark body.upflow-performance .upflow-task-card {
-  background: linear-gradient(145deg, rgba(12, 18, 34, 0.94), rgba(4, 8, 20, 0.9)) !important;
+  background: linear-gradient(
+    145deg,
+    rgba(12, 18, 34, 0.94),
+    rgba(4, 8, 20, 0.9)
+  ) !important;
 }
 
 body.upflow-performance .upflow-panel::before,

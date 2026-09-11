@@ -31,11 +31,13 @@ Create a private Supabase Storage bucket named `task-assets` unless `TASK_ASSETS
 In **Supabase Dashboard → Authentication → URL Configuration**:
 
 1. Set **Site URL** to the same canonical HTTPS origin as `APP_URL`.
-2. Add the exact password-reset callback to **Redirect URLs**: `https://your-production-domain/auth/reset`.
+2. Add the exact Google PKCE callback to **Redirect URLs**: `https://your-production-domain/auth/callback`.
 3. Keep preview and localhost URLs separate from the canonical production URL. Do not point `APP_URL` at a preview deployment.
-4. Up Flow's custom Resend email opens `/auth/reset/confirm` with an opaque, encrypted confirmation state, so it does not depend on preserving a URL fragment through click tracking. The native Supabase recovery-email fallback still uses a direct Auth link; test that fallback with your mail-security scanner or configure the custom Resend path for production.
+4. Enable the Google provider with the same OAuth Web client ID and secret used by the Calendar integration.
+5. Add the Supabase project callback, `https://YOUR-PROJECT.supabase.co/auth/v1/callback`, to the Google Cloud OAuth client's Authorized redirect URIs.
+6. After the Google login smoke test passes, disable the Supabase Email provider. UpFlow accepts Google-authenticated sessions only.
 
-Password-reset links use this allow list. If the callback is missing, Supabase can reject the reset request or redirect users to an incorrect URL.
+If either callback is missing, Google sign-in can fail before the member returns to UpFlow. See [`google-only-authentication.md`](./google-only-authentication.md) for the complete local and production setup.
 
 ## 3. Supabase Security Gate
 

@@ -12,7 +12,6 @@ function read(relativePath: string) {
 test("all primary task entry points use the shared quick-first sheet", () => {
   const entryPoints = [
     "src/app/(dashboard)/page.tsx",
-    "src/app/(dashboard)/calendar/page.tsx",
     "src/app/(dashboard)/spaces/[id]/page.tsx",
     "src/app/(dashboard)/projects/[id]/page.tsx",
   ];
@@ -23,6 +22,9 @@ test("all primary task entry points use the shared quick-first sheet", () => {
     assert.match(source, /<TaskCreateSheet/);
     assert.doesNotMatch(source, /<NewTaskDialog|<CreateTaskPanel/);
   }
+
+  const calendar = read("src/app/(dashboard)/calendar/page.tsx");
+  assert.doesNotMatch(calendar, /TaskCreateSheet|\/api\/tasks\?/);
 });
 
 test("quick-first essentials stay visible and secondary details stay collapsed", () => {
@@ -37,7 +39,7 @@ test("quick-first essentials stay visible and secondary details stay collapsed",
   assert.match(sheet, /<ProgressiveSection icon=\{Shapes\}/);
   assert.match(sheet, /title=\{t\("task\.detailsCustomFields"\)\}/);
   assert.match(sheet, /title=\{t\("task\.detailsSettings"\)\}/);
-  assert.match(sheet, /title=\{t\("task\.detailsCover"\)\}/);
+  assert.doesNotMatch(sheet, /task\.detailsCover|TaskCoverImageControl/);
   assert.match(sheet, /<details className=/);
   assert.doesNotMatch(sheet, /task\.subtasks|addSubtasksLater/);
 });
@@ -52,7 +54,7 @@ test("the sheet preserves inherited defaults and posts the existing API shape", 
   assert.match(sheet, /fetch\("\/api\/tasks"/);
   assert.match(sheet, /project_id: selectedProjectId/);
   assert.match(sheet, /custom_fields: customFieldEntries/);
-  assert.match(sheet, /cover_image_url: coverImageUrl/);
+  assert.doesNotMatch(sheet, /cover_image_url: coverImageUrl/);
   assert.match(sheet, /assignee_id: assigneeId \|\| null/);
   assert.match(sheet, /due_date: dueDate \|\| null/);
 });
@@ -66,8 +68,8 @@ test("task status selectors use the project's board stages when available", () =
   assert.match(createSheet, /taskStatusForTaskBoardOption/);
   assert.match(createSheet, /fieldValuesForSubmit/);
   assert.match(detailSheet, /resolveTaskBoardStatus/);
-  assert.match(detailSheet, /\/api\/tasks\/\$\{currentTask\.id\}\/custom-fields/);
-  assert.match(detailSheet, /task_status: taskStatus/);
+  assert.match(detailSheet, /disabled[\s\S]*task\.automaticMovementOnly/);
+  assert.doesNotMatch(detailSheet, /task_status: taskStatus/);
   assert.match(taskDetailRoute, /custom_field_values:/);
 });
 

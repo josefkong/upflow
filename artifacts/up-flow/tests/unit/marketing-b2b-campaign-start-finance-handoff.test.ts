@@ -21,8 +21,8 @@ test("Marketing B2B campaign starts create one Finance handoff for Vesti and UP 
     "prisma/migrations/20260723120000_add_marketing_b2b_campaign_handoff_tasks/migration.sql",
   );
 
-  assert.match(onboarding, /VESTI_CAMPAIGN_STARTED_AUTOMATION_KEY = "marketing_b2b_vesti_campaign_start"/);
-  assert.match(onboarding, /UP_ZERO_CAMPAIGN_STARTED_AUTOMATION_KEY = "marketing_b2b_up_zero_campaign_start"/);
+  assert.match(onboarding, /VESTI_CAMPAIGN_STARTED_AUTOMATION_KEY\s*=\s*"marketing_b2b_vesti_campaign_start"/);
+  assert.match(onboarding, /UP_ZERO_CAMPAIGN_STARTED_AUTOMATION_KEY\s*=\s*"marketing_b2b_up_zero_campaign_start"/);
   assert.match(onboarding, /title: CAMPAIGN_STARTED_TASK_TITLE,[\s\S]*automationKey: VESTI_CAMPAIGN_STARTED_AUTOMATION_KEY/);
   assert.match(onboarding, /title: CAMPAIGN_STARTED_TASK_TITLE,[\s\S]*automationKey: UP_ZERO_CAMPAIGN_STARTED_AUTOMATION_KEY/);
   assert.match(onboarding, /route === "marketing_b2c"[\s\S]*!step\.marketingB2BOnly/);

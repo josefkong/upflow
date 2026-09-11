@@ -9,15 +9,13 @@ function source(path: string) {
   return readFileSync(join(root, path), "utf8");
 }
 
-test("calendar events can be dragged to another date while preserving their duration", () => {
+test("calendar events cannot be edited by dragging them to another date", () => {
   const page = source("src/app/(dashboard)/calendar/page.tsx");
 
-  assert.match(page, /draggable/);
-  assert.match(page, /onDragStart=\{\(dragEvent\) => startEventDrag\(event, dragEvent\)\}/);
-  assert.match(page, /onDrop=\{\(dragEvent\) => dropEventOnDate\(dragEvent, day\)\}/);
-  assert.match(page, /starts_at: startsAt\.toISOString\(\)/);
-  assert.match(page, /ends_at: endsAt\?\.toISOString\(\) \?\? null/);
-  assert.match(page, /originalEnd\.getTime\(\) - originalStart\.getTime\(\)/);
+  assert.doesNotMatch(page, /draggable/);
+  assert.doesNotMatch(page, /onDragStart=/);
+  assert.doesNotMatch(page, /onDrop=/);
+  assert.doesNotMatch(page, /startEventDrag|dropEventOnDate|rescheduleEvent/);
 });
 
 test("calendar drag-and-drop has localized guidance and outcomes", () => {

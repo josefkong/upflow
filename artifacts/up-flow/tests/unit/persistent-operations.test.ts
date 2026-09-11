@@ -35,7 +35,7 @@ test("custom workflow statuses are workspace and project scoped", () => {
 
   assert.match(schema, /model WorkflowStatus/);
   assert.match(schema, /@@unique\(\[workspace_id, project_id, category, key\]\)/);
-  assert.match(route, /category: z\.enum\(\["task", "doc", "report", "campaign", "deliverable"\]\)/);
+  assert.match(route, /category: z\s*\.enum\(\["task", "doc", "report", "campaign", "deliverable"\]\)/);
   assert.match(route, /requireWorkspaceAdmin/);
   assert.match(route, /workflow_status_upserted/);
 });

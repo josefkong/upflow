@@ -133,14 +133,14 @@ export default function FolderContainerPage() {
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setShowNewFolder(true)}
-                className="inline-flex items-center gap-2 border border-white/10 hover:bg-white/10 text-foreground text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                className="inline-flex h-9 min-h-9 items-center gap-2 rounded-xl border border-white/10 px-3.5 text-xs font-semibold text-foreground transition-colors hover:bg-white/10"
               >
                 <FolderPlus className="w-4 h-4" />
                 {t("folder.newFolder")}
               </button>
               <button
                 onClick={() => setShowNewList(true)}
-                className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                className="inline-flex h-9 min-h-9 items-center gap-2 rounded-xl bg-primary px-3.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
               >
                 <ListPlus className="w-4 h-4" />
                 {t("folder.newList")}
@@ -161,14 +161,14 @@ export default function FolderContainerPage() {
             <div className="mt-5 flex flex-wrap justify-center gap-2">
               <button
                 onClick={() => setShowNewFolder(true)}
-                className="inline-flex items-center gap-2 border border-white/10 hover:bg-white/10 text-foreground text-sm font-medium px-4 py-2 rounded-lg"
+                className="inline-flex h-9 min-h-9 items-center gap-2 rounded-xl border border-white/10 px-3.5 text-xs font-semibold text-foreground hover:bg-white/10"
               >
                 <FolderPlus className="w-4 h-4" />
                 {t("folder.newFolder")}
               </button>
               <button
                 onClick={() => setShowNewList(true)}
-                className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium px-4 py-2 rounded-lg"
+                className="inline-flex h-9 min-h-9 items-center gap-2 rounded-xl bg-primary px-3.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
               >
                 <ListPlus className="w-4 h-4" />
                 {t("folder.newList")}

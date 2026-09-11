@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -31,8 +25,11 @@ import NewProjectDialog from "@/components/projects/new-project-dialog";
 import { useLanguage } from "@/components/language-provider";
 import { useAppUser } from "@/components/user-provider";
 import { cn, formatDate } from "@/lib/utils";
+import {
+  localizeProjectName,
+  localizeSpaceName,
+} from "@/lib/i18n/project-name-translations";
 import type { Folder as FolderType, ProjectKind, Space } from "@/lib/types";
-
 
 type DirectoryTab = "clients" | "internal" | "operations" | "archived";
 type DirectorySort = "name" | "newest" | "due";
@@ -102,14 +99,16 @@ function parseView(value: string | null): DirectoryView | null {
   return value === "cards" || value === "list" ? value : null;
 }
 
-function flattenProjects(items: DirectoryResponse["items"]): DirectoryProject[] {
+function flattenProjects(
+  items: DirectoryResponse["items"],
+): DirectoryProject[] {
   return items.flatMap((item) =>
     item.type === "client" ? item.projects : [item.project],
   );
 }
 
 export default function ProjectDirectory() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const user = useAppUser();
   const router = useRouter();
   const pathname = usePathname();
@@ -131,10 +130,14 @@ export default function ProjectDirectory() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
+  const [expandedClients, setExpandedClients] = useState<Set<string>>(
+    new Set(),
+  );
   const [showNew, setShowNew] = useState(false);
   const [moveProjectId, setMoveProjectId] = useState<string | null>(null);
-  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(
+    null,
+  );
   const directoryRequestId = useRef(0);
   const urlParamsRef = useRef(searchParams.toString());
   const pendingQueryRef = useRef<string | undefined>(undefined);
@@ -268,25 +271,29 @@ export default function ProjectDirectory() {
     ? Boolean(data.capabilities.canCreateProject)
     : Boolean(
         user?.isSuperAdmin ||
-          user?.currentRole === "owner" ||
-          user?.currentRole === "admin" ||
-          user?.currentRole === "member",
+        user?.currentRole === "owner" ||
+        user?.currentRole === "admin",
       );
   const canManageProjects = Boolean(
     data?.capabilities?.canManageProjects ||
-      user?.isSuperAdmin ||
-      user?.currentRole === "owner" ||
-      user?.currentRole === "admin",
+    user?.isSuperAdmin ||
+    user?.currentRole === "owner" ||
+    user?.currentRole === "admin",
   );
 
   const visibleFolders = useMemo(
-    () => (spaceId ? folders.filter((folder) => folder.space_id === spaceId) : folders),
+    () =>
+      spaceId
+        ? folders.filter((folder) => folder.space_id === spaceId)
+        : folders,
     [folders, spaceId],
   );
   const selectedProject = useMemo(
     () =>
       moveProjectId && data
-        ? flattenProjects(data.items).find((project) => project.id === moveProjectId) ?? null
+        ? (flattenProjects(data.items).find(
+            (project) => project.id === moveProjectId,
+          ) ?? null)
         : null,
     [data, moveProjectId],
   );
@@ -304,7 +311,10 @@ export default function ProjectDirectory() {
     replaceParams({ q: null, space: null, folder: null, sort: null });
   };
 
-  const moveProject = async (projectId: string, targetSpaceId: string | null) => {
+  const moveProject = async (
+    projectId: string,
+    targetSpaceId: string | null,
+  ) => {
     try {
       const response = await fetch(`/api/projects/${projectId}`, {
         method: "PATCH",
@@ -323,19 +333,26 @@ export default function ProjectDirectory() {
 
   const deleteProject = async (project: DirectoryProject) => {
     if (deletingProjectId) return;
-    if (!window.confirm(t("projects.deleteConfirm", { name: project.name }))) return;
+    if (!window.confirm(t("projects.deleteConfirm", { name: project.name })))
+      return;
     setDeletingProjectId(project.id);
     try {
-      const response = await fetch(`/api/projects/${project.id}`, { method: "DELETE" });
+      const response = await fetch(`/api/projects/${project.id}`, {
+        method: "DELETE",
+      });
       if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as { error?: string } | null;
+        const body = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
         throw new Error(body?.error || t("projects.couldNotDelete"));
       }
       toast.success(t("projects.deleted"));
       setRefreshKey((value) => value + 1);
       window.dispatchEvent(new CustomEvent("upflow:sidebar-refresh"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("projects.couldNotDelete"));
+      toast.error(
+        error instanceof Error ? error.message : t("projects.couldNotDelete"),
+      );
     } finally {
       setDeletingProjectId(null);
     }
@@ -364,7 +381,11 @@ export default function ProjectDirectory() {
         </p>
       </section>
 
-      <div className="border-b border-border" role="tablist" aria-label={t("projects.directoryTabs")}>
+      <div
+        className="border-b border-border"
+        role="tablist"
+        aria-label={t("projects.directoryTabs")}
+      >
         <div className="flex gap-1 overflow-x-auto pb-px">
           {DIRECTORY_TABS.map((item) => (
             <button
@@ -372,10 +393,13 @@ export default function ProjectDirectory() {
               type="button"
               role="tab"
               aria-selected={tab === item}
-              onClick={() => replaceParams({ tab: item === "clients" ? null : item })}
+              onClick={() =>
+                replaceParams({ tab: item === "clients" ? null : item })
+              }
               className={cn(
                 "relative flex min-h-11 shrink-0 items-center gap-2 rounded-t-lg px-3 text-sm font-semibold text-muted-foreground transition hover:bg-accent/60 hover:text-foreground",
-                tab === item && "text-primary after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:bg-primary",
+                tab === item &&
+                  "text-primary after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:bg-primary",
               )}
             >
               {t(`projects.tab.${item}`)}
@@ -416,13 +440,18 @@ export default function ProjectDirectory() {
               <select
                 value={spaceId}
                 onChange={(event) =>
-                  replaceParams({ space: event.target.value || null, folder: null })
+                  replaceParams({
+                    space: event.target.value || null,
+                    folder: null,
+                  })
                 }
                 className="h-11 w-full min-w-0 rounded-xl border border-input bg-card px-3 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 xl:w-44"
               >
                 <option value="">{t("projects.allSpaces")}</option>
                 {spaces.map((space) => (
-                  <option key={space.id} value={space.id}>{space.name}</option>
+                  <option key={space.id} value={space.id}>
+                    {localizeSpaceName(space.name, language)}
+                  </option>
                 ))}
               </select>
             </label>
@@ -430,12 +459,16 @@ export default function ProjectDirectory() {
               <span className="sr-only">{t("projects.filterFolder")}</span>
               <select
                 value={folderId}
-                onChange={(event) => replaceParams({ folder: event.target.value || null })}
+                onChange={(event) =>
+                  replaceParams({ folder: event.target.value || null })
+                }
                 className="h-11 w-full min-w-0 rounded-xl border border-input bg-card px-3 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 xl:w-44"
               >
                 <option value="">{t("projects.allFolders")}</option>
                 {visibleFolders.map((folder) => (
-                  <option key={folder.id} value={folder.id}>{folder.name}</option>
+                  <option key={folder.id} value={folder.id}>
+                    {folder.name}
+                  </option>
                 ))}
               </select>
             </label>
@@ -445,7 +478,8 @@ export default function ProjectDirectory() {
                 value={sort}
                 onChange={(event) =>
                   replaceParams({
-                    sort: event.target.value === "name" ? null : event.target.value,
+                    sort:
+                      event.target.value === "name" ? null : event.target.value,
                   })
                 }
                 className="h-11 w-full min-w-0 rounded-xl border border-input bg-card px-3 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 xl:w-40"
@@ -510,7 +544,11 @@ export default function ProjectDirectory() {
             onCreate={() => setShowNew(true)}
           />
         ) : tab === "clients" ? (
-          <div className={cn(view === "cards" && "grid items-start gap-4 lg:grid-cols-2")}>
+          <div
+            className={cn(
+              view === "cards" && "grid items-start gap-4 lg:grid-cols-2",
+            )}
+          >
             {data?.items.map((item) =>
               item.type === "client" ? (
                 <ClientGroup
@@ -535,7 +573,13 @@ export default function ProjectDirectory() {
             )}
           </div>
         ) : (
-          <div className={cn(view === "list" ? "space-y-2" : "grid gap-4 sm:grid-cols-2 xl:grid-cols-3")}>
+          <div
+            className={cn(
+              view === "list"
+                ? "space-y-2"
+                : "grid gap-4 sm:grid-cols-2 xl:grid-cols-3",
+            )}
+          >
             {data?.items.map((item) =>
               item.type === "project" ? (
                 <ProjectRow
@@ -557,7 +601,9 @@ export default function ProjectDirectory() {
             <button
               type="button"
               disabled={loadingMore}
-              onClick={() => void loadDirectory({ append: true, cursor: data.nextCursor })}
+              onClick={() =>
+                void loadDirectory({ append: true, cursor: data.nextCursor })
+              }
               className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-card px-4 text-sm font-semibold text-foreground transition hover:border-primary/50 hover:bg-accent disabled:opacity-60"
             >
               {loadingMore && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -582,7 +628,9 @@ export default function ProjectDirectory() {
           project={selectedProject}
           spaces={spaces}
           onClose={() => setMoveProjectId(null)}
-          onMove={(targetSpaceId) => void moveProject(selectedProject.id, targetSpaceId)}
+          onMove={(targetSpaceId) =>
+            void moveProject(selectedProject.id, targetSpaceId)
+          }
         />
       )}
     </div>
@@ -610,7 +658,12 @@ function ClientGroup({
 }) {
   const { t } = useLanguage();
   return (
-    <article className={cn("border border-border bg-card", view === "list" ? "mb-2 rounded-xl" : "rounded-2xl")}>
+    <article
+      className={cn(
+        "border border-border bg-card",
+        view === "list" ? "mb-2 rounded-xl" : "rounded-2xl",
+      )}
+    >
       <button
         type="button"
         onClick={onToggle}
@@ -621,7 +674,9 @@ function ClientGroup({
           <Building2 className="h-5 w-5" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-semibold text-foreground">{item.name}</span>
+          <span className="block truncate font-semibold text-foreground">
+            {item.name}
+          </span>
           <span className="mt-0.5 block text-xs text-muted-foreground">
             {t("projects.clientSummary", {
               projects: item.projectCount,
@@ -637,7 +692,12 @@ function ClientGroup({
         )}
       </button>
       {expanded && (
-        <div className={cn("border-t border-border p-2", view === "cards" && "space-y-2")}>
+        <div
+          className={cn(
+            "border-t border-border p-2",
+            view === "cards" && "space-y-2",
+          )}
+        >
           {item.projects.map((project) => (
             <ProjectRow
               key={project.id}
@@ -673,8 +733,15 @@ function ProjectRow({
   onMove: () => void;
   onDelete: () => void;
 }) {
-  const { t } = useLanguage();
-  const context = [project.company?.name, project.space?.name, project.folder?.name]
+  const { t, language } = useLanguage();
+  const projectDisplayName = localizeProjectName(project.name, language);
+  const context = [
+    project.company?.name,
+    project.space?.name
+      ? localizeSpaceName(project.space.name, language)
+      : null,
+    project.folder?.name,
+  ]
     .filter(Boolean)
     .join(" › ");
   const card = view === "cards";
@@ -685,12 +752,23 @@ function ProjectRow({
       className={cn(
         "group relative border border-border bg-card transition hover:border-primary/35 hover:shadow-sm focus-within:border-primary/50",
         card ? "rounded-2xl p-4" : "rounded-xl px-3 py-3 sm:px-4",
-        compact && "border-transparent bg-transparent hover:bg-accent/50 hover:shadow-none",
+        compact &&
+          "border-transparent bg-transparent hover:bg-accent/50 hover:shadow-none",
         deleting && "pointer-events-none opacity-50",
       )}
     >
-      <div className={cn("flex min-w-0 gap-3", card ? "items-start" : "items-center")}>
-        <span className={cn("hidden shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground sm:inline-flex", card ? "h-9 w-9" : "h-8 w-8")}>
+      <div
+        className={cn(
+          "flex min-w-0 gap-3",
+          card ? "items-start" : "items-center",
+        )}
+      >
+        <span
+          className={cn(
+            "hidden shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground sm:inline-flex",
+            card ? "h-9 w-9" : "h-8 w-8",
+          )}
+        >
           <Folder className="h-4 w-4" />
         </span>
         <div className="min-w-0 flex-1">
@@ -698,23 +776,33 @@ function ProjectRow({
             <Link
               href={`/projects/${project.id}`}
               className="min-w-0 truncate font-semibold text-foreground outline-none transition hover:text-primary focus-visible:rounded focus-visible:ring-2 focus-visible:ring-primary"
-              title={project.name}
+              title={projectDisplayName}
             >
-              {project.name}
+              {projectDisplayName}
             </Link>
-            <span className={cn(
-              "rounded-full px-2 py-0.5 text-[10px] font-bold",
-              project.status === "active"
-                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
-                : "bg-muted text-muted-foreground",
-            )}>
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5 text-[10px] font-bold",
+                project.status === "active"
+                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
+                  : "bg-muted text-muted-foreground",
+              )}
+            >
               {t(`projects.status.${project.status}`)}
             </span>
           </div>
-          <p className="mt-1 truncate text-xs text-muted-foreground" title={context || t("projects.noLocation")}>
+          <p
+            className="mt-1 truncate text-xs text-muted-foreground"
+            title={context || t("projects.noLocation")}
+          >
             {context || t("projects.noLocation")}
           </p>
-          <div className={cn("mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground", !card && "sm:mt-1.5")}>
+          <div
+            className={cn(
+              "mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground",
+              !card && "sm:mt-1.5",
+            )}
+          >
             <span className="inline-flex items-center gap-1.5">
               <CheckSquare2 className="h-3.5 w-3.5" />
               {t("projects.taskProgress", {
@@ -725,7 +813,7 @@ function ProjectRow({
             {project.due_date && (
               <span className="inline-flex items-center gap-1.5">
                 <Calendar className="h-3.5 w-3.5" />
-                {formatDate(project.due_date)}
+                {formatDate(project.due_date, language)}
               </span>
             )}
           </div>
@@ -733,7 +821,9 @@ function ProjectRow({
         {canManage && (
           <details className="relative shrink-0">
             <summary
-              aria-label={t("projects.actionsFor", { name: project.name })}
+              aria-label={t("projects.actionsFor", {
+                name: projectDisplayName,
+              })}
               className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-lg text-muted-foreground transition hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary [&::-webkit-details-marker]:hidden"
             >
               <MoreHorizontal className="h-4 w-4" />
@@ -763,9 +853,21 @@ function ProjectRow({
 
 function DirectorySkeleton({ view }: { view: DirectoryView }) {
   return (
-    <div className={cn(view === "list" ? "space-y-2" : "grid gap-4 sm:grid-cols-2 xl:grid-cols-3")}>
+    <div
+      className={cn(
+        view === "list"
+          ? "space-y-2"
+          : "grid gap-4 sm:grid-cols-2 xl:grid-cols-3",
+      )}
+    >
       {Array.from({ length: 6 }).map((_, index) => (
-        <div key={index} className={cn("animate-pulse rounded-xl border border-border bg-card", view === "list" ? "h-20" : "h-36")} />
+        <div
+          key={index}
+          className={cn(
+            "animate-pulse rounded-xl border border-border bg-card",
+            view === "list" ? "h-20" : "h-36",
+          )}
+        />
       ))}
     </div>
   );
@@ -775,8 +877,14 @@ function DirectoryError({ onRetry }: { onRetry: () => void }) {
   const { t } = useLanguage();
   return (
     <div className="rounded-2xl border border-destructive/30 bg-destructive/5 px-5 py-10 text-center">
-      <p className="font-semibold text-foreground">{t("projects.directoryLoadFailed")}</p>
-      <button type="button" onClick={onRetry} className="mt-3 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
+      <p className="font-semibold text-foreground">
+        {t("projects.directoryLoadFailed")}
+      </p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-3 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+      >
         {t("common.retry")}
       </button>
     </div>
@@ -805,11 +913,19 @@ function DirectoryEmpty({
         {filtered ? t("projects.adjustFilters") : t("projects.emptyTabHint")}
       </p>
       {filtered ? (
-        <button type="button" onClick={onClear} className="mt-4 rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-accent">
+        <button
+          type="button"
+          onClick={onClear}
+          className="mt-4 rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-accent"
+        >
           {t("projects.clearFilters")}
         </button>
       ) : canCreate ? (
-        <button type="button" onClick={onCreate} className="mt-4 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+        <button
+          type="button"
+          onClick={onCreate}
+          className="mt-4 inline-flex h-9 min-h-9 items-center justify-center rounded-xl bg-primary px-3.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+        >
           {t("projects.createProject")}
         </button>
       ) : null}
@@ -828,10 +944,14 @@ function MoveProjectDialog({
   onClose: () => void;
   onMove: (spaceId: string | null) => void;
 }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const projectDisplayName = localizeProjectName(project.name, language);
   const [target, setTarget] = useState(project.space?.id ?? "");
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
       <div
         role="dialog"
         aria-modal="true"
@@ -839,8 +959,12 @@ function MoveProjectDialog({
         className="w-full max-w-sm rounded-2xl border border-border bg-popover p-5 text-popover-foreground shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <h2 className="font-semibold text-foreground">{t("projects.moveProject")}</h2>
-        <p className="mt-1 truncate text-xs text-muted-foreground">{project.name}</p>
+        <h2 className="font-semibold text-foreground">
+          {t("projects.moveProject")}
+        </h2>
+        <p className="mt-1 truncate text-xs text-muted-foreground">
+          {projectDisplayName}
+        </p>
         <label className="mt-5 block text-xs font-semibold text-foreground">
           {t("projects.space")}
           <select
@@ -850,15 +974,25 @@ function MoveProjectDialog({
           >
             <option value="">{t("common.unassigned")}</option>
             {spaces.map((space) => (
-              <option key={space.id} value={space.id}>{space.name}</option>
+              <option key={space.id} value={space.id}>
+                {localizeSpaceName(space.name, language)}
+              </option>
             ))}
           </select>
         </label>
         <div className="mt-6 flex gap-2">
-          <button type="button" onClick={onClose} className="min-h-11 flex-1 rounded-xl border border-border text-sm font-semibold text-foreground hover:bg-accent">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-11 flex-1 rounded-xl border border-border text-sm font-semibold text-foreground hover:bg-accent"
+          >
             {t("common.cancel")}
           </button>
-          <button type="button" onClick={() => onMove(target || null)} className="min-h-11 flex-1 rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+          <button
+            type="button"
+            onClick={() => onMove(target || null)}
+            className="min-h-11 flex-1 rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+          >
             {t("projects.move")}
           </button>
         </div>

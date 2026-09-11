@@ -16,6 +16,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useLanguage } from "@/components/language-provider";
+import { CreateActionButton } from "@/components/ui/create-action-button";
 import { APP_TIME_ZONE, cn } from "@/lib/utils";
 import type { CustomFieldDefinition, Task, TaskAssignee } from "@/lib/types";
 
@@ -166,6 +168,7 @@ export default function SocialMediaCalendar({
   onOpenTask,
   onRefresh,
 }: Props) {
+  const { language, t } = useLanguage();
   const [plans, setPlans] = useState<SocialMediaPlan[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [calendarFields, setCalendarFields] = useState<CustomFieldDefinition[]>([]);
@@ -186,7 +189,7 @@ export default function SocialMediaCalendar({
           fetch(`/api/projects/${projectId}/social-media`),
           fetch("/api/companies?limit=100&include_summary=false"),
         ]);
-        if (!plansResult.ok) throw new Error("Could not load the social media calendar");
+        if (!plansResult.ok) throw new Error(t("socialCalendar.loadError"));
         const planPayload = (await plansResult.json()) as {
           items?: SocialMediaPlan[];
           plans?: SocialMediaPlan[];
@@ -199,13 +202,13 @@ export default function SocialMediaCalendar({
         setCalendarFields(planPayload.custom_fields ?? []);
         setCompanies(companyPayload.items ?? []);
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Could not load the social media calendar");
+        toast.error(error instanceof Error ? error.message : t("socialCalendar.loadError"));
       } finally {
         setLoading(false);
         setRefreshing(false);
       }
     },
-    [projectId],
+    [projectId, t],
   );
 
   useEffect(() => {
@@ -338,7 +341,7 @@ export default function SocialMediaCalendar({
     if (plansWithoutContent.length) {
       rows.push({
         tone: "slate",
-        title: `${plansWithoutContent.length} client${plansWithoutContent.length === 1 ? "" : "s"} without a content plan`,
+        title: t("socialCalendar.alert.clientsWithoutPlan", { count: plansWithoutContent.length }),
         detail: plansWithoutContent.slice(0, 4).map((company) => company.name).join(", "),
       });
     }
@@ -347,31 +350,31 @@ export default function SocialMediaCalendar({
       if (stats?.shortfall) {
         rows.push({
           tone: "amber",
-          title: `${plan.company.name}: ${stats.shortfall} additional creative item${stats.shortfall === 1 ? "" : "s"} required`,
-          detail: `${stats.planned} of ${plan.monthly_post_target} contracted posts are planned.`,
+          title: t("socialCalendar.alert.additionalItems", { client: plan.company.name, count: stats.shortfall }),
+          detail: t("socialCalendar.alert.contractedProgress", { planned: stats.planned, target: plan.monthly_post_target }),
         });
       }
       const frequencyTarget = (plan.weekly_posting_frequency ?? 0) * weeksInMonth(plan.month);
       if (frequencyTarget > 0 && stats && stats.planned < frequencyTarget) {
         rows.push({
           tone: "amber",
-          title: `${plan.company.name}: posting frequency is below plan`,
-          detail: `${stats.planned} items are planned; ${frequencyTarget} are needed to support ${plan.weekly_posting_frequency} posts per week.`,
+          title: t("socialCalendar.alert.frequencyBelowPlan", { client: plan.company.name }),
+          detail: t("socialCalendar.alert.frequencyDetail", { planned: stats.planned, needed: frequencyTarget, weekly: plan.weekly_posting_frequency ?? 0 }),
         });
       }
       const postingGap = clientPostingGap(plan, posts);
       if (postingGap && monthKey(plan.month) >= currentMonthKey()) {
         rows.push({
           tone: "amber",
-          title: `${plan.company.name}: ${postingGap.days}-day posting gap (7-day threshold)`,
-          detail: `No content is planned from ${postingGap.start} through ${postingGap.end}.`,
+          title: t("socialCalendar.alert.postingGap", { client: plan.company.name, days: postingGap.days }),
+          detail: t("socialCalendar.alert.postingGapDetail", { start: postingGap.start, end: postingGap.end }),
         });
       }
       if (!isMoodboardReady(plan.moodboard_status) && monthIsCurrentOrPast(plan.month)) {
         rows.push({
           tone: "violet",
-          title: `${plan.company.name}: moodboard is ${plan.moodboard_status.toLocaleLowerCase()}`,
-          detail: "Creative production remains locked until the moodboard is ready.",
+          title: t("socialCalendar.alert.moodboardStatus", { client: plan.company.name, status: localizeSocialStatus(plan.moodboard_status, t).toLocaleLowerCase(language) }),
+          detail: t("socialCalendar.productionLocked"),
         });
       }
       if (monthKey(plan.month) === currentMonthKey()) {
@@ -383,8 +386,8 @@ export default function SocialMediaCalendar({
         if (!hasUpcomingPost) {
           rows.push({
             tone: "slate",
-            title: `${plan.company.name}: no post planned in the next 7 days`,
-            detail: "Add or reschedule content to maintain a consistent publishing rhythm.",
+            title: t("socialCalendar.alert.noPostNextWeek", { client: plan.company.name }),
+            detail: t("socialCalendar.alert.noPostNextWeekDetail"),
           });
         }
       }
@@ -393,7 +396,7 @@ export default function SocialMediaCalendar({
     if (overdue.length) {
       rows.push({
         tone: "red",
-        title: `${overdue.length} overdue post${overdue.length === 1 ? "" : "s"}`,
+        title: t("socialCalendar.alert.overduePosts", { count: overdue.length }),
         detail: overdue.slice(0, 3).map(({ task }) => task.title).join(", "),
       });
     }
@@ -405,12 +408,12 @@ export default function SocialMediaCalendar({
     if (awaitingSchedule.length) {
       rows.push({
         tone: "yellow",
-        title: `${awaitingSchedule.length} approved post${awaitingSchedule.length === 1 ? "" : "s"} not yet scheduled`,
-        detail: "Set a publishing date or move the item to Scheduled.",
+        title: t("socialCalendar.alert.approvedNotScheduled", { count: awaitingSchedule.length }),
+        detail: t("socialCalendar.alert.approvedNotScheduledDetail"),
       });
     }
     return rows;
-  }, [fieldsByName, planStats, plansForMonth, plansWithoutContent, posts]);
+  }, [fieldsByName, language, planStats, plansForMonth, plansWithoutContent, posts, t]);
 
   const updateTaskField = async (
     task: Task,
@@ -421,7 +424,7 @@ export default function SocialMediaCalendar({
     if (!canContribute) return;
     const definition = fieldsByName.get(fieldName.toLocaleLowerCase());
     if (!definition) {
-      toast.error(`${fieldName} is not configured for this list yet.`);
+      toast.error(t("socialCalendar.fieldNotConfigured", { field: fieldName }));
       return;
     }
     const key = `${task.id}:${definition.id}`;
@@ -436,10 +439,10 @@ export default function SocialMediaCalendar({
           ...(taskStatus ? { task_status: taskStatus } : {}),
         }),
       });
-      if (!response.ok) throw new Error(await apiError(response, "Could not update the content stage"));
+      if (!response.ok) throw new Error(t("socialCalendar.updateStageError"));
       await Promise.all([load(true), Promise.resolve(onRefresh())]);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not update the content stage");
+      toast.error(error instanceof Error ? error.message : t("socialCalendar.updateStageError"));
     } finally {
       setSavingKey(null);
     }
@@ -454,10 +457,10 @@ export default function SocialMediaCalendar({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ moodboard_status: moodboardStatus }),
       });
-      if (!response.ok) throw new Error(await apiError(response, "Could not update the moodboard"));
+      if (!response.ok) throw new Error(t("socialCalendar.updateMoodboardError"));
       await Promise.all([load(true), Promise.resolve(onRefresh())]);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not update the moodboard");
+      toast.error(error instanceof Error ? error.message : t("socialCalendar.updateMoodboardError"));
     } finally {
       setSavingKey(null);
     }
@@ -468,7 +471,7 @@ export default function SocialMediaCalendar({
     await Promise.all([load(true), Promise.resolve(onRefresh())]);
   };
 
-  const monthLabel = monthTitle(calendarMonth);
+  const monthLabel = monthTitle(calendarMonth, language);
   const activeFilterCount = Object.values(filters).filter((value) => value !== "" && value !== false).length;
   const visiblePlanSummaries = plansForMonth.filter((plan) => {
     const stats = planStats.get(plan.id);
@@ -493,13 +496,13 @@ export default function SocialMediaCalendar({
               <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/15 text-violet-600 dark:text-violet-300">
                 <CalendarDays className="h-4 w-4" />
               </span>
-              <h3 className="text-lg font-bold text-foreground">Social Media Calendar</h3>
+              <h3 className="text-lg font-bold text-foreground">{t("socialCalendar.title")}</h3>
               <span className="rounded-full border border-violet-500/25 bg-violet-500/10 px-2 py-0.5 text-[11px] font-semibold text-violet-700 dark:text-violet-200">
-                Operational view
+                {t("socialCalendar.operationalView")}
               </span>
             </div>
             <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-              Plan each client&apos;s content, move work through production and approval, and see publishing risks before they become missed posts.
+              {t("socialCalendar.description")}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -507,31 +510,29 @@ export default function SocialMediaCalendar({
               type="button"
               onClick={() => setFiltersOpen((open) => !open)}
               className={cn(
-                "rounded-xl border px-3 py-2 text-sm font-semibold transition",
+                "inline-flex h-9 min-h-9 items-center rounded-xl border px-3 text-xs font-semibold transition",
                 filtersOpen || activeFilterCount
                   ? "border-primary/35 bg-primary/10 text-primary"
                   : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
             >
-              Filters{activeFilterCount ? ` (${activeFilterCount})` : ""}
+              {t("socialCalendar.filters")}{activeFilterCount ? ` (${activeFilterCount})` : ""}
               {filtersOpen ? <ChevronUp className="ml-1 inline h-3.5 w-3.5" /> : <ChevronDown className="ml-1 inline h-3.5 w-3.5" />}
             </button>
             <button
               type="button"
               onClick={() => void refresh()}
               disabled={refreshing}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-2 text-sm font-semibold text-muted-foreground transition hover:bg-accent hover:text-foreground disabled:opacity-50"
+              className="inline-flex h-9 min-h-9 items-center gap-2 rounded-xl border border-border bg-background px-3 text-xs font-semibold text-muted-foreground transition hover:bg-accent hover:text-foreground disabled:opacity-50"
             >
-              <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} /> Refresh
+              <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} /> {t("common.refresh")}
             </button>
             {canContribute && (
-              <button
-                type="button"
+              <CreateActionButton
                 onClick={() => setShowPlanForm((show) => !show)}
-                className="upflow-gradient-button inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-semibold text-white"
               >
-                <Plus className="h-4 w-4" /> New content plan
-              </button>
+                <Plus className="h-4 w-4" /> {t("socialCalendar.newPlan")}
+              </CreateActionButton>
             )}
           </div>
         </div>
@@ -563,7 +564,7 @@ export default function SocialMediaCalendar({
         )}
       </section>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3" aria-label="Client content plan overview">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3" aria-label={t("socialCalendar.planOverview")}>
         {visiblePlanSummaries.map((plan) => (
           <PlanSummary
             key={plan.id}
@@ -630,10 +631,10 @@ export default function SocialMediaCalendar({
         </section>
       )}
 
-      <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5" aria-label="Social media operational alerts">
+      <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5" aria-label={t("socialCalendar.operationalAlerts")}>
         <div className="mb-3 flex items-center gap-2">
           <AlertCircle className="h-4 w-4 text-amber-500" />
-          <h3 className="text-sm font-bold text-foreground">Operational alerts</h3>
+          <h3 className="text-sm font-bold text-foreground">{t("socialCalendar.operationalAlerts")}</h3>
           <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">{alerts.length}</span>
         </div>
         {alerts.length ? (
@@ -644,7 +645,7 @@ export default function SocialMediaCalendar({
           </div>
         ) : (
           <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-3 text-sm text-emerald-700 dark:text-emerald-200">
-            Everything is on track for the selected month. No social media bottlenecks are currently detected.
+            {t("socialCalendar.noAlerts")}
           </div>
         )}
       </section>
@@ -669,6 +670,7 @@ function NewPlanForm({
   onClose: () => void;
   onCreated: () => Promise<void>;
 }) {
+  const { t } = useLanguage();
   const [companyId, setCompanyId] = useState("");
   const [month, setMonth] = useState(defaultMonth);
   const [target, setTarget] = useState("12");
@@ -681,17 +683,17 @@ function NewPlanForm({
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!companyId) {
-      toast.error("Choose a client before creating the content plan.");
+      toast.error(t("socialCalendar.chooseClientError"));
       return;
     }
     const monthlyTarget = Number(target);
     if (!Number.isInteger(monthlyTarget) || monthlyTarget < 1) {
-      toast.error("The monthly contracted target must be at least 1 post.");
+      toast.error(t("socialCalendar.monthlyTargetError"));
       return;
     }
     const weeklyFrequency = Number(frequency);
     if (!Number.isInteger(weeklyFrequency) || weeklyFrequency < 1 || weeklyFrequency > 7) {
-      toast.error("Weekly posting frequency must be between 1 and 7 posts.");
+      toast.error(t("socialCalendar.weeklyFrequencyError"));
       return;
     }
     setSaving(true);
@@ -709,11 +711,11 @@ function NewPlanForm({
           designer_id: designerId || null,
         }),
       });
-      if (!response.ok) throw new Error(await apiError(response, "Could not create the content plan"));
-      toast.success("Content plan created with its moodboard and scheduled post items.");
+      if (!response.ok) throw new Error(t("socialCalendar.createPlanError"));
+      toast.success(t("socialCalendar.planCreated"));
       await onCreated();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not create the content plan");
+      toast.error(error instanceof Error ? error.message : t("socialCalendar.createPlanError"));
     } finally {
       setSaving(false);
     }
@@ -721,35 +723,35 @@ function NewPlanForm({
 
   return (
     <form onSubmit={submit} className="mt-4 grid gap-3 rounded-xl border border-primary/20 bg-primary/[0.04] p-4 lg:grid-cols-3">
-      <FormField label="Client">
+      <FormField label={t("socialCalendar.client")}>
         <select value={companyId} onChange={(event) => setCompanyId(event.target.value)} className={fieldControlClass} required>
-          <option value="">Choose a client</option>
+          <option value="">{t("socialCalendar.chooseClient")}</option>
           {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
         </select>
       </FormField>
-      <FormField label="Plan month">
+      <FormField label={t("socialCalendar.planMonth")}>
         <input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className={fieldControlClass} required />
       </FormField>
-      <FormField label="Contracted posts">
+      <FormField label={t("socialCalendar.contractedPosts")}>
         <input type="number" min="1" max="100" value={target} onChange={(event) => setTarget(event.target.value)} className={fieldControlClass} required />
       </FormField>
-      <FormField label="Weekly posting frequency">
+      <FormField label={t("socialCalendar.weeklyFrequency")}>
         <input type="number" min="1" max="7" value={frequency} onChange={(event) => setFrequency(event.target.value)} className={fieldControlClass} />
       </FormField>
-      <FormField label="Required formats" hint="Comma-separated">
+      <FormField label={t("socialCalendar.requiredFormats")} hint={t("socialCalendar.commaSeparated")}>
         <input value={formats} onChange={(event) => setFormats(event.target.value)} className={fieldControlClass} placeholder="Carousel, Reel, Static Post" />
       </FormField>
-      <FormField label="Social Media Manager">
-        <UserSelect value={managerId} users={users} onChange={setManagerId} placeholder="Assign later" />
+      <FormField label={t("socialCalendar.manager")}>
+        <UserSelect value={managerId} users={users} onChange={setManagerId} placeholder={t("socialCalendar.assignLater")} />
       </FormField>
-      <FormField label="Designer">
-        <UserSelect value={designerId} users={users} onChange={setDesignerId} placeholder="Assign later" />
+      <FormField label={t("socialCalendar.designer")}>
+        <UserSelect value={designerId} users={users} onChange={setDesignerId} placeholder={t("socialCalendar.assignLater")} />
       </FormField>
       <div className="flex items-end gap-2 lg:col-span-2">
-        <button type="button" onClick={onClose} className="rounded-lg px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground">Cancel</button>
-        <button type="submit" disabled={saving || !companies.length} className="upflow-gradient-button inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Create automated plan
-        </button>
+        <button type="button" onClick={onClose} className="rounded-lg px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground">{t("common.cancel")}</button>
+        <CreateActionButton type="submit" disabled={saving || !companies.length}>
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} {t("socialCalendar.createAutomatedPlan")}
+        </CreateActionButton>
       </div>
     </form>
   );
@@ -768,6 +770,7 @@ function AdditionalPostForm({
   onClose: () => void;
   onCreated: () => Promise<void>;
 }) {
+  const { t } = useLanguage();
   const [title, setTitle] = useState("");
   const [contentType, setContentType] = useState(firstFormat(plan?.required_formats));
   const [scheduledDate, setScheduledDate] = useState(defaultDate);
@@ -792,11 +795,11 @@ function AdditionalPostForm({
           designer_id: designerId || null,
         }),
       });
-      if (!response.ok) throw new Error(await apiError(response, "Could not add the content item"));
-      toast.success("Content item added to the calendar.");
+      if (!response.ok) throw new Error(t("socialCalendar.addItemError"));
+      toast.success(t("socialCalendar.itemAdded"));
       await onCreated();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not add the content item");
+      toast.error(error instanceof Error ? error.message : t("socialCalendar.addItemError"));
     } finally {
       setSaving(false);
     }
@@ -804,15 +807,15 @@ function AdditionalPostForm({
 
   return (
     <form onSubmit={submit} className="grid gap-3 rounded-2xl border border-primary/25 bg-primary/[0.04] p-4 md:grid-cols-2 xl:grid-cols-5">
-      <div className="md:col-span-2 xl:col-span-2"><p className="text-sm font-bold text-foreground">Add content for {plan.company.name}</p><p className="mt-1 text-xs text-muted-foreground">Use this for the additional creatives identified by the plan target.</p></div>
-      <FormField label="Content title"><input value={title} onChange={(event) => setTitle(event.target.value)} className={fieldControlClass} placeholder="July product reel" required /></FormField>
-      <FormField label="Format"><input value={contentType} onChange={(event) => setContentType(event.target.value)} className={fieldControlClass} placeholder="Reel" /></FormField>
-      <FormField label="Scheduled publishing date"><input type="date" value={scheduledDate} onChange={(event) => setScheduledDate(event.target.value)} className={fieldControlClass} /></FormField>
-      <FormField label="Responsible"><UserSelect value={assigneeId} users={users} onChange={setAssigneeId} placeholder="Use plan manager" /></FormField>
-      <FormField label="Designer"><UserSelect value={designerId} users={users} onChange={setDesignerId} placeholder="Use plan designer" /></FormField>
+      <div className="md:col-span-2 xl:col-span-2"><p className="text-sm font-bold text-foreground">{t("socialCalendar.addContentFor", { client: plan.company.name })}</p><p className="mt-1 text-xs text-muted-foreground">{t("socialCalendar.additionalContentHint")}</p></div>
+      <FormField label={t("socialCalendar.contentTitle")}><input value={title} onChange={(event) => setTitle(event.target.value)} className={fieldControlClass} placeholder={t("socialCalendar.contentTitlePlaceholder")} required /></FormField>
+      <FormField label={t("socialCalendar.format")}><input value={contentType} onChange={(event) => setContentType(event.target.value)} className={fieldControlClass} placeholder="Reel" /></FormField>
+      <FormField label={t("socialCalendar.scheduledPublishingDate")}><input type="date" value={scheduledDate} onChange={(event) => setScheduledDate(event.target.value)} className={fieldControlClass} /></FormField>
+      <FormField label={t("socialCalendar.responsible")}><UserSelect value={assigneeId} users={users} onChange={setAssigneeId} placeholder={t("socialCalendar.usePlanManager")} /></FormField>
+      <FormField label={t("socialCalendar.designer")}><UserSelect value={designerId} users={users} onChange={setDesignerId} placeholder={t("socialCalendar.usePlanDesigner")} /></FormField>
       <div className="flex items-end justify-end gap-2 md:col-span-2 xl:col-span-3">
-        <button type="button" onClick={onClose} className="rounded-lg px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground">Cancel</button>
-        <button type="submit" disabled={saving} className="upflow-gradient-button inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving && <Loader2 className="h-4 w-4 animate-spin" />} Add item</button>
+        <button type="button" onClick={onClose} className="rounded-lg px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground">{t("common.cancel")}</button>
+        <CreateActionButton type="submit" disabled={saving}>{saving && <Loader2 className="h-4 w-4 animate-spin" />} {t("socialCalendar.addItem")}</CreateActionButton>
       </div>
     </form>
   );
@@ -833,21 +836,22 @@ function FilterPanel({
   contentTypes: string[];
   statusOptions: string[];
 }) {
+  const { t } = useLanguage();
   const set = (key: keyof CalendarFilters, value: string | boolean) => setFilters((current) => ({ ...current, [key]: value }));
   return (
     <div className="mt-4 grid gap-3 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-4">
-      <FilterSelect label="Client" value={filters.clientId} onChange={(value) => set("clientId", value)} options={companies.map((company) => ({ value: company.id, label: company.name }))} />
-      <FilterSelect label="Social Media Manager" value={filters.managerId} onChange={(value) => set("managerId", value)} options={users.map((user) => ({ value: user.id, label: user.name }))} />
-      <FilterSelect label="Designer" value={filters.designerId} onChange={(value) => set("designerId", value)} options={users.map((user) => ({ value: user.id, label: user.name }))} />
-      <FilterSelect label="Content type" value={filters.contentType} onChange={(value) => set("contentType", value)} options={contentTypes.map((value) => ({ value, label: value }))} />
-      <FilterSelect label="Stage or status" value={filters.status} onChange={(value) => set("status", value)} options={statusOptions.map((value) => ({ value, label: value }))} />
-      <FormField label="From"><input type="date" value={filters.from} onChange={(event) => set("from", event.target.value)} className={fieldControlClass} /></FormField>
-      <FormField label="To"><input type="date" value={filters.to} onChange={(event) => set("to", event.target.value)} className={fieldControlClass} /></FormField>
+      <FilterSelect label={t("socialCalendar.client")} value={filters.clientId} onChange={(value) => set("clientId", value)} options={companies.map((company) => ({ value: company.id, label: company.name }))} />
+      <FilterSelect label={t("socialCalendar.manager")} value={filters.managerId} onChange={(value) => set("managerId", value)} options={users.map((user) => ({ value: user.id, label: user.name }))} />
+      <FilterSelect label={t("socialCalendar.designer")} value={filters.designerId} onChange={(value) => set("designerId", value)} options={users.map((user) => ({ value: user.id, label: user.name }))} />
+      <FilterSelect label={t("socialCalendar.contentType")} value={filters.contentType} onChange={(value) => set("contentType", value)} options={contentTypes.map((value) => ({ value, label: value }))} />
+      <FilterSelect label={t("socialCalendar.stageOrStatus")} value={filters.status} onChange={(value) => set("status", value)} options={statusOptions.map((value) => ({ value, label: localizeSocialStatus(value, t) }))} />
+      <FormField label={t("socialCalendar.from")}><input type="date" value={filters.from} onChange={(event) => set("from", event.target.value)} className={fieldControlClass} /></FormField>
+      <FormField label={t("socialCalendar.to")}><input type="date" value={filters.to} onChange={(event) => set("to", event.target.value)} className={fieldControlClass} /></FormField>
       <div className="flex flex-wrap items-end gap-3 pb-1">
-        <FilterToggle label="Overdue only" checked={filters.overdueOnly} onChange={(checked) => set("overdueOnly", checked)} />
-        <FilterToggle label="Without a plan" checked={filters.withoutPlanOnly} onChange={(checked) => set("withoutPlanOnly", checked)} />
-        <FilterToggle label="Below target" checked={filters.belowTargetOnly} onChange={(checked) => set("belowTargetOnly", checked)} />
-        <button type="button" onClick={() => setFilters(EMPTY_FILTERS)} className="text-xs font-semibold text-primary hover:underline">Clear all</button>
+        <FilterToggle label={t("socialCalendar.overdueOnly")} checked={filters.overdueOnly} onChange={(checked) => set("overdueOnly", checked)} />
+        <FilterToggle label={t("socialCalendar.withoutPlan")} checked={filters.withoutPlanOnly} onChange={(checked) => set("withoutPlanOnly", checked)} />
+        <FilterToggle label={t("socialCalendar.belowTarget")} checked={filters.belowTargetOnly} onChange={(checked) => set("belowTargetOnly", checked)} />
+        <button type="button" onClick={() => setFilters(EMPTY_FILTERS)} className="text-xs font-semibold text-primary hover:underline">{t("socialCalendar.clearAll")}</button>
       </div>
     </div>
   );
@@ -872,6 +876,7 @@ function PlanSummary({
   onOpenMoodboard: () => void;
   onAddPost: () => void;
 }) {
+  const { t } = useLanguage();
   const manager = users.find((user) => user.id === plan.social_manager_id);
   const designer = users.find((user) => user.id === plan.designer_id);
   return (
@@ -879,17 +884,17 @@ function PlanSummary({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-base font-bold text-foreground">{plan.company.name}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">{stats.planned} planned of {plan.monthly_post_target} contracted posts</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{t("socialCalendar.planProgress", { planned: stats.planned, target: plan.monthly_post_target })}</p>
         </div>
-        {stats.shortfall > 0 ? <StatusPill tone="amber">+{stats.shortfall} needed</StatusPill> : <StatusPill tone="green">On target</StatusPill>}
+        {stats.shortfall > 0 ? <StatusPill tone="amber">{t("socialCalendar.needed", { count: stats.shortfall })}</StatusPill> : <StatusPill tone="green">{t("socialCalendar.onTarget")}</StatusPill>}
       </div>
       <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-        <Metric label="Production" value={stats.inProduction} tone="violet" />
-        <Metric label="Approval" value={stats.awaitingApproval} tone="yellow" />
-        <Metric label="Scheduled" value={stats.scheduled} tone="blue" />
-        <Metric label="Published" value={stats.published} tone="green" />
-        <Metric label="Overdue" value={stats.overdue} tone="red" />
-        <Metric label="Weekly" value={plan.weekly_posting_frequency ?? 0} tone="slate" />
+        <Metric label={t("socialCalendar.production")} value={stats.inProduction} tone="violet" />
+        <Metric label={t("socialCalendar.approval")} value={stats.awaitingApproval} tone="yellow" />
+        <Metric label={t("socialCalendar.scheduled")} value={stats.scheduled} tone="blue" />
+        <Metric label={t("socialCalendar.published")} value={stats.published} tone="green" />
+        <Metric label={t("socialCalendar.overdue")} value={stats.overdue} tone="red" />
+        <Metric label={t("socialCalendar.weekly")} value={plan.weekly_posting_frequency ?? 0} tone="slate" />
       </div>
       <div className="mt-3 grid gap-2 border-t border-border pt-3 text-xs">
         <label className="grid grid-cols-[auto_1fr] items-center gap-2 text-muted-foreground">
@@ -898,15 +903,15 @@ function PlanSummary({
           </span>
           <span className="min-w-0"><span className="font-semibold text-foreground">Moodboard</span>{" "}
             <select value={plan.moodboard_status} onChange={(event) => onMoodboardChange(event.target.value)} disabled={!canContribute || saving} className="ml-1 max-w-[150px] rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-foreground hover:border-border focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50">
-              {MOODBOARD_STATUSES.map((status) => <option key={status}>{status}</option>)}
+              {MOODBOARD_STATUSES.map((status) => <option key={status} value={status}>{localizeSocialStatus(status, t)}</option>)}
             </select>
           </span>
         </label>
-        <div className="flex items-center justify-between gap-2 text-muted-foreground"><span>Manager: <strong className="font-medium text-foreground">{manager?.name ?? "Unassigned"}</strong></span><span>Designer: <strong className="font-medium text-foreground">{designer?.name ?? "Unassigned"}</strong></span></div>
+        <div className="flex items-center justify-between gap-2 text-muted-foreground"><span>{t("socialCalendar.manager")}: <strong className="font-medium text-foreground">{manager?.name ?? t("socialCalendar.unassigned")}</strong></span><span>{t("socialCalendar.designer")}: <strong className="font-medium text-foreground">{designer?.name ?? t("socialCalendar.unassigned")}</strong></span></div>
       </div>
       <div className="mt-3 flex items-center gap-2">
-        {plan.moodboard_task && <button type="button" onClick={onOpenMoodboard} className="text-xs font-semibold text-primary hover:underline">Open moodboard task</button>}
-        {canContribute && <button type="button" onClick={onAddPost} className="ml-auto inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"><Plus className="h-3 w-3" /> Add post</button>}
+        {plan.moodboard_task && <button type="button" onClick={onOpenMoodboard} className="text-xs font-semibold text-primary hover:underline">{t("socialCalendar.openMoodboardTask")}</button>}
+        {canContribute && <button type="button" onClick={onAddPost} className="ml-auto inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"><Plus className="h-3 w-3" /> {t("socialCalendar.addPost")}</button>}
       </div>
     </article>
   );
@@ -929,12 +934,13 @@ function MonthGrid({
   onOpenTask: (task: Task) => void;
   onUpdateField: (task: Task, fieldName: string, value: string, taskStatus?: Task["status"]) => Promise<void>;
 }) {
+  const { language } = useLanguage();
   const days = monthDays(month);
   return (
     <div className="overflow-x-auto">
       <div className="min-w-[860px]">
         <div className="grid grid-cols-7 border-b border-border bg-muted/30">
-          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <div key={day} className="px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{day}</div>)}
+          {weekdayLabels(language).map((day) => <div key={day} className="px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{day}</div>)}
         </div>
         <div className="grid grid-cols-7">
           {days.map((date) => <DayCell key={date.key} date={date} posts={postsByDate.get(date.key) ?? []} fieldsByName={fieldsByName} canContribute={canContribute} savingKey={savingKey} onOpenTask={onOpenTask} onUpdateField={onUpdateField} />)}
@@ -992,6 +998,7 @@ function PostCard({
   onOpenTask: (task: Task) => void;
   onUpdateField: (task: Task, fieldName: string, value: string, taskStatus?: Task["status"]) => Promise<void>;
 }) {
+  const { language, t } = useLanguage();
   const contentType = fieldValue(task, fieldsByName, FIELD_NAMES.contentType) || "Post";
   const contentStatus = fieldValue(task, fieldsByName, FIELD_NAMES.contentStatus) || "Not Requested";
   const approvalStatus = fieldValue(task, fieldsByName, FIELD_NAMES.approvalStatus) || "Not Requested";
@@ -1012,36 +1019,40 @@ function PostCard({
       </button>
       <div className="mt-1 flex flex-wrap items-center gap-1">
         <span className="rounded bg-background/70 px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">{contentType}</span>
-        <span className={cn("inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-semibold", moodboardReady ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-200" : "bg-muted text-muted-foreground")}><Check className={cn("h-2.5 w-2.5", !moodboardReady && "hidden")} />Moodboard: {plan.moodboard_status}</span>
+        <span className={cn("inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-semibold", moodboardReady ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-200" : "bg-muted text-muted-foreground")}><Check className={cn("h-2.5 w-2.5", !moodboardReady && "hidden")} />Moodboard: {localizeSocialStatus(plan.moodboard_status, t)}</span>
       </div>
-      <p className="mt-1 truncate text-[9px] text-muted-foreground">Responsible: {task.assignee?.name ?? "Unassigned"}</p>
+      <p className="mt-1 truncate text-[9px] text-muted-foreground">{t("socialCalendar.responsible")}: {task.assignee?.name ?? t("socialCalendar.unassigned")}</p>
       <div className="mt-1.5 grid gap-1">
-        <StageSelect label="Production" value={contentStatus} options={CONTENT_STATUSES} disabled={!canContribute || !moodboardReady || savingKey === `${task.id}:${contentField?.id}`} onChange={(value) => void onUpdateField(task, FIELD_NAMES.contentStatus, value, value === "Not Requested" ? "todo" : "in_progress")} />
-        <StageSelect label="Approval" value={approvalStatus} options={APPROVAL_STATUSES} disabled={!canContribute || !moodboardReady || savingKey === `${task.id}:${approvalField?.id}`} onChange={(value) => void onUpdateField(task, FIELD_NAMES.approvalStatus, value)} />
-        <StageSelect label="Publishing" value={publishingStatus} options={PUBLISHING_STATUSES} disabled={!canContribute || !canPublish || savingKey === `${task.id}:${publishingField?.id}`} onChange={(value) => void onUpdateField(task, FIELD_NAMES.publishingStatus, value, value === "Published" ? "done" : undefined)} />
+        <StageSelect label={t("socialCalendar.production")} value={contentStatus} options={CONTENT_STATUSES} disabled={!canContribute || !moodboardReady || savingKey === `${task.id}:${contentField?.id}`} onChange={(value) => void onUpdateField(task, FIELD_NAMES.contentStatus, value, value === "Not Requested" ? "todo" : "in_progress")} />
+        <StageSelect label={t("socialCalendar.approval")} value={approvalStatus} options={APPROVAL_STATUSES} disabled={!canContribute || !moodboardReady || savingKey === `${task.id}:${approvalField?.id}`} onChange={(value) => void onUpdateField(task, FIELD_NAMES.approvalStatus, value)} />
+        <StageSelect label={t("socialCalendar.publishing")} value={publishingStatus} options={PUBLISHING_STATUSES} disabled={!canContribute || !canPublish || savingKey === `${task.id}:${publishingField?.id}`} onChange={(value) => void onUpdateField(task, FIELD_NAMES.publishingStatus, value, value === "Published" ? "done" : undefined)} />
       </div>
-      {publishingStatus === "Published" && <span className="mt-1 inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-200"><Check className="h-3 w-3" /> Published{publishedAt ? ` ${publishedAt.slice(0, 16).replace("T", " ")}` : ""}</span>}
-      {publishedUrl && <a href={publishedUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="mt-1 inline-flex max-w-full items-center gap-0.5 truncate text-[9px] font-semibold text-primary hover:underline"><ExternalLink className="h-2.5 w-2.5" /> Published post</a>}
-      {!moodboardReady && <p className="mt-1 text-[9px] font-medium text-violet-700 dark:text-violet-200">Production unlocks when the moodboard is ready.</p>}
+      {publishingStatus === "Published" && <span className="mt-1 inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-200"><Check className="h-3 w-3" /> {t("socialCalendar.published")}{publishedAt ? ` ${new Intl.DateTimeFormat(language, { dateStyle: "short", timeStyle: "short" }).format(new Date(publishedAt))}` : ""}</span>}
+      {publishedUrl && <a href={publishedUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="mt-1 inline-flex max-w-full items-center gap-0.5 truncate text-[9px] font-semibold text-primary hover:underline"><ExternalLink className="h-2.5 w-2.5" /> {t("socialCalendar.publishedPost")}</a>}
+      {!moodboardReady && <p className="mt-1 text-[9px] font-medium text-violet-700 dark:text-violet-200">{t("socialCalendar.productionLocked")}</p>}
     </article>
   );
 }
 
 function StageSelect({ label, value, options, disabled, onChange }: { label: string; value: string; options: string[]; disabled: boolean; onChange: (value: string) => void }) {
-  return <label className="flex items-center justify-between gap-1 text-[9px] text-muted-foreground"><span>{label}</span><select value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} onClick={(event) => event.stopPropagation()} className="max-w-[112px] truncate rounded border border-border/70 bg-background/80 px-1 py-0.5 text-[9px] text-foreground disabled:cursor-not-allowed disabled:opacity-55">{options.map((option) => <option key={option}>{option}</option>)}</select></label>;
+  const { t } = useLanguage();
+  return <label className="flex items-center justify-between gap-1 text-[9px] text-muted-foreground"><span>{label}</span><select value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} onClick={(event) => event.stopPropagation()} className="max-w-[112px] truncate rounded border border-border/70 bg-background/80 px-1 py-0.5 text-[9px] text-foreground disabled:cursor-not-allowed disabled:opacity-55">{options.map((option) => <option key={option} value={option}>{localizeSocialStatus(option, t)}</option>)}</select></label>;
 }
 
 function CalendarHeader({ label, onPrevious, onNext, onToday }: { label: string; onPrevious: () => void; onNext: () => void; onToday: () => void }) {
-  return <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5"><div className="flex items-center gap-1"><button type="button" onClick={onPrevious} className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Previous month"><ArrowLeft className="h-4 w-4" /></button><button type="button" onClick={onNext} className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Next month"><ArrowRight className="h-4 w-4" /></button><button type="button" onClick={onToday} className="ml-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-accent hover:text-foreground">Today</button></div><h3 className="text-base font-bold text-foreground">{label}</h3><p className="text-xs text-muted-foreground">Green published · blue scheduled · yellow approval · purple production · red overdue</p></div>;
+  const { t } = useLanguage();
+  return <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5"><div className="flex items-center gap-1"><button type="button" onClick={onPrevious} className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={t("calendar.previousMonth")}><ArrowLeft className="h-4 w-4" /></button><button type="button" onClick={onNext} className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={t("calendar.nextMonth")}><ArrowRight className="h-4 w-4" /></button><button type="button" onClick={onToday} className="ml-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-accent hover:text-foreground">{t("calendar.today")}</button></div><h3 className="text-base font-bold text-foreground">{label}</h3><p className="text-xs text-muted-foreground">{t("socialCalendar.legend")}</p></div>;
 }
 
 function UnscheduledRail({ posts, onOpenTask }: { posts: Array<{ task: Task; plan: SocialMediaPlan }>; onOpenTask: (task: Task) => void }) {
+  const { t } = useLanguage();
   if (!posts.length) return null;
-  return <div className="border-t border-border p-4"><p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Unscheduled content</p><div className="flex flex-wrap gap-2">{posts.map(({ task, plan }) => <button key={task.id} type="button" onClick={() => onOpenTask(task)} className="rounded-lg border border-border bg-muted/30 px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-accent">{plan.company.name}: {task.title}</button>)}</div></div>;
+  return <div className="border-t border-border p-4"><p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">{t("socialCalendar.unscheduledContent")}</p><div className="flex flex-wrap gap-2">{posts.map(({ task, plan }) => <button key={task.id} type="button" onClick={() => onOpenTask(task)} className="rounded-lg border border-border bg-muted/30 px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-accent">{plan.company.name}: {task.title}</button>)}</div></div>;
 }
 
 function MissingPlanPanel({ companies, canContribute, onCreate }: { companies: Company[]; canContribute: boolean; onCreate: () => void }) {
-  return <section className="rounded-2xl border border-border bg-card p-5 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-base font-bold text-foreground">Clients without a content plan</h3><p className="mt-1 text-sm text-muted-foreground">These clients have no social-media plan for the displayed month.</p></div>{canContribute && <button type="button" onClick={onCreate} className="upflow-gradient-button inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-white"><Plus className="h-4 w-4" /> Create plan</button>}</div>{companies.length ? <div className="mt-4 flex flex-wrap gap-2">{companies.map((company) => <span key={company.id} className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm font-semibold text-foreground">{company.name}</span>)}</div> : <p className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-3 text-sm text-emerald-700 dark:text-emerald-200">Every client has a plan for this month.</p>}</section>;
+  const { t } = useLanguage();
+  return <section className="rounded-2xl border border-border bg-card p-5 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-base font-bold text-foreground">{t("socialCalendar.clientsWithoutPlan")}</h3><p className="mt-1 text-sm text-muted-foreground">{t("socialCalendar.clientsWithoutPlanHint")}</p></div>{canContribute && <CreateActionButton onClick={onCreate}><Plus className="h-4 w-4" /> {t("socialCalendar.createPlan")}</CreateActionButton>}</div>{companies.length ? <div className="mt-4 flex flex-wrap gap-2">{companies.map((company) => <span key={company.id} className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm font-semibold text-foreground">{company.name}</span>)}</div> : <p className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-3 text-sm text-emerald-700 dark:text-emerald-200">{t("socialCalendar.allClientsHavePlan")}</p>}</section>;
 }
 
 function AlertRow({ alert }: { alert: CalendarAlert }) {
@@ -1050,7 +1061,8 @@ function AlertRow({ alert }: { alert: CalendarAlert }) {
 }
 
 function EmptyPlanSummary({ onCreate }: { onCreate: () => void }) {
-  return <button type="button" onClick={onCreate} className="flex min-h-[176px] flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card p-4 text-center transition hover:border-primary/40 hover:bg-primary/[0.03]"><Plus className="h-5 w-5 text-primary" /><span className="mt-2 text-sm font-bold text-foreground">Create this month&apos;s first plan</span><span className="mt-1 text-xs text-muted-foreground">Automatically create the moodboard and scheduled content items.</span></button>;
+  const { t } = useLanguage();
+  return <button type="button" onClick={onCreate} className="flex min-h-[176px] flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card p-4 text-center transition hover:border-primary/40 hover:bg-primary/[0.03]"><Plus className="h-5 w-5 text-primary" /><span className="mt-2 text-sm font-bold text-foreground">{t("socialCalendar.createFirstPlan")}</span><span className="mt-1 text-xs text-muted-foreground">{t("socialCalendar.createFirstPlanHint")}</span></button>;
 }
 
 function CalendarLoading() { return <div className="space-y-4"><div className="h-32 animate-pulse rounded-2xl bg-muted" /><div className="grid gap-3 md:grid-cols-3"><div className="h-44 animate-pulse rounded-2xl bg-muted" /><div className="h-44 animate-pulse rounded-2xl bg-muted" /><div className="h-44 animate-pulse rounded-2xl bg-muted" /></div><div className="h-[540px] animate-pulse rounded-2xl bg-muted" /></div>; }
@@ -1059,7 +1071,7 @@ function Metric({ label, value, tone }: { label: string; value: number; tone: "v
 function StatusPill({ tone, children }: { tone: "amber" | "green"; children: React.ReactNode }) { return <span className={cn("shrink-0 rounded-full px-2 py-1 text-[10px] font-bold", tone === "amber" ? "bg-amber-500/15 text-amber-700 dark:text-amber-200" : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-200")}>{children}</span>; }
 function FormField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) { return <label className="grid gap-1 text-xs font-semibold text-muted-foreground"><span>{label}{hint && <span className="ml-1 font-normal">({hint})</span>}</span>{children}</label>; }
 function UserSelect({ value, users, onChange, placeholder }: { value: string; users: TaskAssignee[]; onChange: (value: string) => void; placeholder: string }) { return <select value={value} onChange={(event) => onChange(event.target.value)} className={fieldControlClass}><option value="">{placeholder}</option>{users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select>; }
-function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Array<{ value: string; label: string }> }) { return <FormField label={label}><select value={value} onChange={(event) => onChange(event.target.value)} className={fieldControlClass}><option value="">All</option>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></FormField>; }
+function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Array<{ value: string; label: string }> }) { const { t } = useLanguage(); return <FormField label={label}><select value={value} onChange={(event) => onChange(event.target.value)} className={fieldControlClass}><option value="">{t("common.all")}</option>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></FormField>; }
 function FilterToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) { return <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-3.5 w-3.5 rounded border-border text-primary focus:ring-primary" />{label}</label>; }
 
 const fieldControlClass = "w-full rounded-lg border border-input bg-background px-2.5 py-2 text-sm text-foreground shadow-sm outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20";
@@ -1176,7 +1188,27 @@ function currentMonthKey() { return todayKey().slice(0, 7); }
 function monthKey(value: string) { return value.slice(0, 7); }
 function dateKey(date: Date) { const year = date.getFullYear(); const month = String(date.getMonth() + 1).padStart(2, "0"); const day = String(date.getDate()).padStart(2, "0"); return `${year}-${month}-${day}`; }
 function addDaysKey(date: string, days: number) { const parsed = new Date(`${date}T12:00:00`); parsed.setDate(parsed.getDate() + days); return dateKey(parsed); }
-function monthTitle(month: string) { const [year, monthIndex] = month.split("-").map(Number); return new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(new Date(year, monthIndex - 1, 1)); }
+function monthTitle(month: string, language: "en" | "pt-BR") { const [year, monthIndex] = month.split("-").map(Number); const formatted = new Intl.DateTimeFormat(language, { month: "long", year: "numeric" }).format(new Date(year, monthIndex - 1, 1)); return formatted ? `${formatted.charAt(0).toLocaleUpperCase(language)}${formatted.slice(1)}` : formatted; }
+function weekdayLabels(language: "en" | "pt-BR") { return Array.from({ length: 7 }, (_, index) => new Intl.DateTimeFormat(language, { weekday: "short" }).format(new Date(2024, 0, 7 + index)).replace(".", "")); }
+function localizeSocialStatus(value: string, t: (key: string, vars?: Record<string, string | number>) => string) {
+  const keys: Record<string, string> = {
+    "Not Started": "socialCalendar.status.notStarted",
+    "In Progress": "socialCalendar.status.inProgress",
+    Ready: "socialCalendar.status.ready",
+    "Awaiting Approval": "socialCalendar.status.awaitingApproval",
+    Approved: "socialCalendar.status.approved",
+    "Not Requested": "socialCalendar.status.notRequested",
+    "In Production": "socialCalendar.status.inProduction",
+    "In Review": "socialCalendar.status.inReview",
+    Scheduled: "socialCalendar.status.scheduled",
+    "Changes Requested": "socialCalendar.status.changesRequested",
+    "Not Scheduled": "socialCalendar.status.notScheduled",
+    Published: "socialCalendar.status.published",
+    Overdue: "socialCalendar.status.overdue",
+    Cancelled: "socialCalendar.status.cancelled",
+  };
+  return keys[value] ? t(keys[value]) : value;
+}
 function shiftMonth(month: string, amount: number) { const [year, monthIndex] = month.split("-").map(Number); return dateKey(new Date(year, monthIndex - 1 + amount, 1)).slice(0, 7); }
 function monthDays(month: string): CalendarDate[] { const [year, monthIndex] = month.split("-").map(Number); const first = new Date(year, monthIndex - 1, 1); const last = new Date(year, monthIndex, 0); const result: CalendarDate[] = []; for (let i = 0; i < first.getDay(); i += 1) result.push({ key: `before-${i}`, day: 0, inMonth: false }); for (let day = 1; day <= last.getDate(); day += 1) { const date = new Date(year, monthIndex - 1, day); result.push({ key: dateKey(date), day, inMonth: true }); } while (result.length % 7) result.push({ key: `after-${result.length}`, day: 0, inMonth: false }); return result; }
 function monthIsCurrentOrPast(month: string) { return monthKey(month) <= currentMonthKey(); }
@@ -1215,4 +1247,3 @@ function clientPostingGap(plan: SocialMediaPlan, posts: SocialMediaPost[]): Post
 function daysBetweenKeys(start: string, end: string) { return Math.round((new Date(`${end}T12:00:00`).getTime() - new Date(`${start}T12:00:00`).getTime()) / 86_400_000); }
 function firstFormat(value: unknown) { return Array.isArray(value) && typeof value[0] === "string" ? value[0] : ""; }
 function cardTone(publishingStatus: string, contentStatus: string) { if (publishingStatus === "Overdue") return "border-red-500/35 bg-red-500/[0.06]"; if (publishingStatus === "Published") return "border-emerald-500/35 bg-emerald-500/[0.06]"; if (publishingStatus === "Scheduled") return "border-blue-500/35 bg-blue-500/[0.06]"; if (contentStatus === "Awaiting Approval") return "border-yellow-500/35 bg-yellow-500/[0.06]"; if (contentStatus === "In Production") return "border-violet-500/35 bg-violet-500/[0.06]"; return "border-border bg-background"; }
-async function apiError(response: Response, fallback: string) { try { const body = (await response.json()) as { error?: string }; return body.error || fallback; } catch { return fallback; } }

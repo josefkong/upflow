@@ -21,16 +21,17 @@ const ItemSchema = z.object({
 
 async function PATCH_handler(
   req: NextRequest,
-  { params }: { params: { id: string; itemId: string } },
+  { params }: { params: Promise<{ id: string; itemId: string }> },
 ) {
+  const { id, itemId } = await params;
   const _r = await requireAuth();
   if (!_r.ok) return _r.response;
   const auth = _r.auth;
-  const access = await loadOnboardingAccess(auth, params.id);
+  const access = await loadOnboardingAccess(auth, id);
   if (!access) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const item = await prisma.onboardingChecklistItem.findFirst({
-    where: { id: params.itemId, onboarding_id: params.id },
+    where: { id: itemId, onboarding_id: id },
     select: {
       id: true,
       department: true,
@@ -61,7 +62,7 @@ async function PATCH_handler(
   }
 
   if (parsed.data.status === "complete") {
-    const blocker = await getOnboardingCompletionBlocker(prisma, params.id, item);
+    const blocker = await getOnboardingCompletionBlocker(prisma, id, item);
     if (blocker) return NextResponse.json({ error: blocker }, { status: 409 });
   }
   if (parsed.data.status === "in_progress" && item.task_id) {
@@ -69,23 +70,26 @@ async function PATCH_handler(
     if (blocker) return NextResponse.json({ error: blocker }, { status: 409 });
   }
 
-  let updated = await prisma.$transaction(async (tx) => {
-    await tx.onboardingChecklistItem.update({
-      where: { id: params.itemId },
-      data: {
-        status: parsed.data.status,
-        notes: parsed.data.notes,
-        owner_id: access.admin ? parsed.data.owner_id : undefined,
-        ...(dueDate !== undefined && { due_date: dueDate }),
-        ...(parsed.data.status === "complete"
-          ? { completed_at: new Date(), completed_by: auth.prismaUser.id }
-          : parsed.data.status
-            ? { completed_at: null, completed_by: null }
-            : {}),
-      },
-    });
-    return recomputeOnboardingProgress(tx, params.id);
-  });
+  let updated = await prisma.$transaction(
+    async (tx) => {
+      await tx.onboardingChecklistItem.update({
+        where: { id: itemId },
+        data: {
+          status: parsed.data.status,
+          notes: parsed.data.notes,
+          owner_id: access.admin ? parsed.data.owner_id : undefined,
+          ...(dueDate !== undefined && { due_date: dueDate }),
+          ...(parsed.data.status === "complete"
+            ? { completed_at: new Date(), completed_by: auth.prismaUser.id }
+            : parsed.data.status
+              ? { completed_at: null, completed_by: null }
+              : {}),
+        },
+      });
+      return recomputeOnboardingProgress(tx, id);
+    },
+    { maxWait: 10_000, timeout: 30_000 },
+  );
 
   if (parsed.data.status && item.task_id) {
     const taskStatus = parsed.data.status === "complete" ? "done" : parsed.data.status === "in_progress" ? "in_progress" : "todo";
@@ -106,7 +110,7 @@ async function PATCH_handler(
     entity_id: updated.id,
     project_id: updated.project_id,
     company_id: updated.company_id,
-    metadata: { item_id: params.itemId, status: parsed.data.status },
+    metadata: { item_id: itemId, status: parsed.data.status },
   });
 
   return NextResponse.json(updated);

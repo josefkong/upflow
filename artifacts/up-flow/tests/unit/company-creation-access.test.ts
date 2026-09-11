@@ -25,7 +25,25 @@ test("Commercial and Sales aliases receive onboarding access", () => {
   assert.equal(isCommercialOrSalesDepartmentName("Marketing"), false);
   const commercial = resolveCompanyCreationAccess({ isWorkspaceAdmin: false, membership: { role: "member", status: "active", departmentName: "Commercial" } });
   assert.equal(commercial.canStartOnboarding, true);
+  assert.equal(commercial.canCreateCompleteClient, true);
   assert.equal(commercial.canCreateStandalone, false);
+});
+
+test("Finance can create a complete client without receiving onboarding access", () => {
+  const finance = resolveCompanyCreationAccess({
+    isWorkspaceAdmin: false,
+    membership: {
+      role: "member",
+      status: "active",
+      departmentName: "Financeiro",
+    },
+  });
+  assert.deepEqual(finance, {
+    canCreateStandalone: false,
+    canCreateCompleteClient: true,
+    canStartOnboarding: false,
+    forceCreatorAsOwner: false,
+  });
 });
 
 test("only active non-guest Creative members receive the standalone client permission", () => {
@@ -35,6 +53,7 @@ test("only active non-guest Creative members receive the standalone client permi
   });
   assert.deepEqual(creative, {
     canCreateStandalone: true,
+    canCreateCompleteClient: false,
     canStartOnboarding: false,
     forceCreatorAsOwner: true,
   });
@@ -46,6 +65,7 @@ test("only active non-guest Creative members receive the standalone client permi
   ]) {
     assert.deepEqual(resolveCompanyCreationAccess({ isWorkspaceAdmin: false, membership }), {
       canCreateStandalone: false,
+      canCreateCompleteClient: false,
       canStartOnboarding: false,
       forceCreatorAsOwner: false,
     });
@@ -60,6 +80,7 @@ test("workspace admins retain standalone, onboarding, and owner-assignment acces
     }),
     {
       canCreateStandalone: true,
+      canCreateCompleteClient: true,
       canStartOnboarding: true,
       forceCreatorAsOwner: false,
     },

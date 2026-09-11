@@ -54,5 +54,5 @@ test("Space workflows are persisted, authorized, synchronized, and rendered as b
   assert.match(manager, /space\.taskStatuses/);
   assert.match(board, /resolveTaskBoardStatus/);
   assert.match(boardStatus, /SPACE_TASK_STATUS_FIELD_NAME/);
-  assert.match(board, /task_status/);
+  assert.match(boardStatus, /kind === "space"/);
 });

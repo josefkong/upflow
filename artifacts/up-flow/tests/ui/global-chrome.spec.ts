@@ -17,8 +17,8 @@ test.describe("Global chrome", () => {
     const ctx = await loggedInContext(browser, baseURL, SEEDED.admin.email);
     await ctx.addCookies([
       {
-        name: "upflow.sidebar.desktopOpen.v1",
-        value: "1",
+        name: "upflow.sidebar.desktopOpen.v2",
+        value: "0",
         url: baseURL!,
       },
     ]);
@@ -57,54 +57,61 @@ test.describe("Global chrome", () => {
     await expect(page).toHaveURL(/\/docs$/, { timeout: 30_000 });
 
     const main = page.locator("main");
-    const mainWithSidebarBox = await main.boundingBox();
-    expect(mainWithSidebarBox).not.toBeNull();
-
-    await desktopSidebar.getByTestId("sidebar-panel-toggle").click();
-    const restoreSidebar = page.getByRole("button", {
-      name: "Show sidebar",
-    });
-    await expect(desktopSidebar).toBeHidden();
-    await expect(desktopSidebar).toHaveCSS("width", "0px");
-    await expect(desktopSidebar).toHaveCSS("opacity", "0");
-    await expect(desktopSidebar).toHaveAttribute("aria-hidden", "true");
-    await expect(desktopSidebar).toHaveAttribute("inert", "");
-    await expect(restoreSidebar).toBeVisible();
-    await expect(restoreSidebar).toHaveAccessibleName("Show sidebar");
-    await expect(restoreSidebar).toHaveAttribute(
-      "aria-controls",
-      "desktop-sidebar",
-    );
-    await expect(restoreSidebar).toHaveAttribute("aria-expanded", "false");
-    await expect(restoreSidebar).toBeFocused();
-
     const mainWithoutSidebarBox = await main.boundingBox();
     expect(mainWithoutSidebarBox).not.toBeNull();
+
+    const expandSidebar = desktopSidebar.getByRole("button", {
+      name: "Show sidebar",
+    });
+    const desktopPanel = page.locator("#desktop-sidebar-panel");
+    await expect(desktopSidebar).toBeVisible();
+    await expect(desktopSidebar).toHaveCSS("width", "64px");
+    await expect(rail).toBeVisible();
+    await expect(desktopPanel).toBeHidden();
+    await expect(desktopPanel).toHaveAttribute("aria-hidden", "true");
+    await expect(desktopPanel).toHaveAttribute("inert", "");
+    await expect(expandSidebar).toBeVisible();
+    await expect(expandSidebar).toHaveAccessibleName("Show sidebar");
+    await expect(expandSidebar).toHaveAttribute(
+      "aria-controls",
+      "desktop-sidebar-panel",
+    );
+    await expect(expandSidebar).toHaveAttribute("aria-expanded", "false");
+    await expect(expandSidebar).toBeFocused();
+    await expect(
+      rail.getByTestId("sidebar-rail-item-label").first(),
+    ).toHaveClass(/sr-only/);
+
+    await expandSidebar.press("Enter");
+    await expect(desktopSidebar).toBeVisible();
+    await expect(desktopSidebar).toHaveCSS("width", "272px");
+    await expect(desktopPanel).toBeVisible();
+    await expect(desktopPanel).toHaveAttribute("aria-hidden", "false");
+    await expect(desktopPanel).not.toHaveAttribute("inert", "");
+    await expect(rail).toBeHidden();
+    const hideSidebar = desktopSidebar.getByRole("button", {
+      name: "Hide sidebar",
+    });
+    await expect(hideSidebar).toBeFocused();
+
+    const mainWithSidebarBox = await main.boundingBox();
+    expect(mainWithSidebarBox).not.toBeNull();
     expect(mainWithoutSidebarBox!.x).toBeLessThan(mainWithSidebarBox!.x);
     expect(mainWithoutSidebarBox!.width).toBeGreaterThan(
       mainWithSidebarBox!.width,
     );
 
-    await restoreSidebar.press("Enter");
-    await expect(desktopSidebar).toBeVisible();
-    await expect(desktopSidebar).toHaveAttribute("aria-hidden", "false");
-    await expect(desktopSidebar).not.toHaveAttribute("inert", "");
-    await expect(rail).toBeVisible();
-    await expect(
-      desktopSidebar.getByTestId("sidebar-panel-toggle"),
-    ).toBeFocused();
-
     await ctx.close();
   });
 
-  test("hidden desktop sidebar restores with the keyboard and keeps translated labels readable", async ({
+  test("collapsed desktop sidebar expands with the keyboard and keeps icon targets aligned", async ({
     browser,
     baseURL,
   }) => {
     const ctx = await loggedInContext(browser, baseURL, SEEDED.admin.email);
     await ctx.addCookies([
       {
-        name: "upflow.sidebar.desktopOpen.v1",
+        name: "upflow.sidebar.desktopOpen.v2",
         value: "0",
         url: baseURL!,
       },
@@ -119,92 +126,94 @@ test.describe("Global chrome", () => {
 
     const desktopSidebar = page.getByTestId("desktop-sidebar");
     const rail = page.getByTestId("sidebar-rail-navigation");
-    const restoreSidebar = page.getByTestId("desktop-sidebar-restore");
-    await expect(desktopSidebar).toBeHidden();
-    await expect(desktopSidebar).toHaveCSS("width", "0px");
-    await expect(desktopSidebar).toHaveCSS("opacity", "0");
-    await expect(desktopSidebar).toHaveAttribute("aria-hidden", "true");
-    await expect(desktopSidebar).toHaveAttribute("inert", "");
-    await expect(restoreSidebar).toBeVisible();
-    await expect(restoreSidebar).toHaveAccessibleName("Mostrar sidebar");
-    await expect(restoreSidebar).toHaveAttribute(
+    const desktopPanel = page.locator("#desktop-sidebar-panel");
+    const expandSidebar = desktopSidebar.getByTestId("sidebar-panel-toggle");
+    await expect(desktopSidebar).toBeVisible();
+    await expect(desktopSidebar).toHaveCSS("width", "64px");
+    await expect(rail).toBeVisible();
+    await expect(desktopPanel).toBeHidden();
+    await expect(desktopPanel).toHaveAttribute("aria-hidden", "true");
+    await expect(desktopPanel).toHaveAttribute("inert", "");
+    await expect(expandSidebar).toBeVisible();
+    await expect(expandSidebar).toHaveAccessibleName("Mostrar sidebar");
+    await expect(expandSidebar).toHaveAttribute(
       "aria-controls",
-      "desktop-sidebar",
+      "desktop-sidebar-panel",
     );
-    await expect(restoreSidebar).toHaveAttribute("aria-expanded", "false");
-    await expect(restoreSidebar).toBeInViewport();
+    await expect(expandSidebar).toHaveAttribute("aria-expanded", "false");
+    await expect(expandSidebar).toBeInViewport();
+    await expect(
+      rail.getByTestId("sidebar-rail-item-label").first(),
+    ).toHaveClass(/sr-only/);
 
-    await restoreSidebar.focus();
+    const railTargetSizes = await rail.locator("a, button").evaluateAll((items) =>
+      items.map((item) => {
+        const box = item.getBoundingClientRect();
+        return { width: box.width, height: box.height };
+      }),
+    );
+    expect(railTargetSizes.length).toBeGreaterThan(0);
+    expect(
+      railTargetSizes.every(({ width, height }) => width >= 44 && height >= 44),
+    ).toBeTruthy();
+
+    await expandSidebar.focus();
     await page.keyboard.press("Enter");
     await expect(desktopSidebar).toBeVisible();
-    await expect(rail).toBeVisible();
+    await expect(desktopSidebar).toHaveCSS("width", "272px");
+    await expect(desktopPanel).toBeVisible();
+    await expect(rail).toBeHidden();
     const hideSidebar = desktopSidebar
       .getByRole("button", { name: "Ocultar sidebar" })
       .first();
     await expect(hideSidebar).toBeFocused();
 
-    const labelOverflow = await rail
-      .getByTestId("sidebar-rail-item-label")
-      .evaluateAll((labels) =>
-        labels.map((label) => ({
-          scrollWidth: label.scrollWidth,
-          clientWidth: label.clientWidth,
-          scrollHeight: label.scrollHeight,
-          clientHeight: label.clientHeight,
-        })),
-      );
-    expect(labelOverflow.length).toBeGreaterThan(0);
-    expect(
-      labelOverflow.every(
-        ({ scrollWidth, clientWidth, scrollHeight, clientHeight }) =>
-          scrollWidth <= clientWidth && scrollHeight <= clientHeight,
-      ),
-    ).toBeTruthy();
-
     await expect
       .poll(() =>
         page.evaluate(() =>
-          localStorage.getItem("upflow.sidebar.desktopOpen.v1"),
+          localStorage.getItem("upflow.sidebar.desktopOpen.v2"),
         ),
       )
       .toBe("1");
     await expect
-      .poll(async () =>
-        (await ctx.cookies()).find(
-          (cookie) => cookie.name === "upflow.sidebar.desktopOpen.v1",
-        )?.value,
+      .poll(
+        async () =>
+          (await ctx.cookies()).find(
+            (cookie) => cookie.name === "upflow.sidebar.desktopOpen.v2",
+          )?.value,
       )
       .toBe("1");
     await page.reload();
     await expect(desktopSidebar).toBeVisible();
-    await expect(restoreSidebar).toBeHidden();
+    await expect(desktopSidebar).toHaveCSS("width", "272px");
     await expect(hideSidebar).toBeVisible();
 
-
     await hideSidebar.click();
-    await expect(desktopSidebar).toBeHidden();
-    await expect(desktopSidebar).toHaveAttribute("aria-hidden", "true");
-    await expect(desktopSidebar).toHaveAttribute("inert", "");
-    await expect(restoreSidebar).toBeVisible();
-    await expect(restoreSidebar).toBeFocused();
+    await expect(desktopSidebar).toBeVisible();
+    await expect(desktopSidebar).toHaveCSS("width", "64px");
+    await expect(desktopPanel).toBeHidden();
+    await expect(expandSidebar).toBeVisible();
+    await expect(expandSidebar).toBeFocused();
     await expect
       .poll(() =>
         page.evaluate(() =>
-          localStorage.getItem("upflow.sidebar.desktopOpen.v1"),
+          localStorage.getItem("upflow.sidebar.desktopOpen.v2"),
         ),
       )
       .toBe("0");
     await expect
-      .poll(async () =>
-        (await ctx.cookies()).find(
-          (cookie) => cookie.name === "upflow.sidebar.desktopOpen.v1",
-        )?.value,
+      .poll(
+        async () =>
+          (await ctx.cookies()).find(
+            (cookie) => cookie.name === "upflow.sidebar.desktopOpen.v2",
+          )?.value,
       )
       .toBe("0");
 
     await page.reload();
-    await expect(desktopSidebar).toBeHidden();
-    await expect(restoreSidebar).toBeVisible();
+    await expect(desktopSidebar).toBeVisible();
+    await expect(desktopSidebar).toHaveCSS("width", "64px");
+    await expect(expandSidebar).toBeVisible();
 
     await ctx.close();
   });
@@ -216,7 +225,7 @@ test.describe("Global chrome", () => {
     const ctx = await loggedInContext(browser, baseURL, SEEDED.admin.email);
     await ctx.addCookies([
       {
-        name: "upflow.sidebar.desktopOpen.v1",
+        name: "upflow.sidebar.desktopOpen.v2",
         value: "0",
         url: baseURL!,
       },
@@ -229,7 +238,7 @@ test.describe("Global chrome", () => {
     expect(created.ok()).toBeTruthy();
 
     await page.goto("/");
-    await page.getByTestId("desktop-sidebar-restore").click();
+    await page.getByTestId("sidebar-panel-toggle").click();
     const trigger = page.getByRole("button", { name: "Workspace options" });
     await expect(trigger).toBeVisible();
     await trigger.click();

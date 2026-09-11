@@ -31,13 +31,17 @@ test("standalone client creation remains separate from onboarding", () => {
   assert.match(clientsPage, /create-client-onboarding/);
   assert.match(companiesAccessRoute, /resolveCompanyCreationAccess/);
   assert.match(companiesAccessRoute, /can_create_standalone/);
+  assert.match(companiesAccessRoute, /can_create_complete_client/);
+  assert.match(companiesAccessRoute, /can_view_financials/);
   assert.match(teamPage, /router\.refresh\(\)/);
   assert.match(createDialog, /start_onboarding: false/);
   assert.match(createDialog, /createdWithoutOnboarding/);
+  assert.match(createDialog, /fieldClass =\s*\n\s*"[^"]*pl-16 pr-4/);
+  assert.match(createDialog, /onboardingInputClass =\s*\n\s*"[^"]*pl-16 pr-14/);
   assert.match(companiesRoute, /const startOnboarding = parsed\.data\.start_onboarding \?\? false/);
   assert.match(companiesRoute, /canCreateStandalone/);
   assert.match(companiesRoute, /forceCreatorAsOwner/);
-  assert.match(companiesRoute, /if \(startOnboarding && !companyCreationAccess\.forceCreatorAsOwner/);
+  assert.match(companiesRoute, /\(startOnboarding \|\| completeRegistration\)/);
   assert.match(companiesRoute, /canStartOnboarding/);
   assert.match(onboardingPanel, /\/api\/companies\/access/);
   assert.match(onboardingPanel, /canStartClientOnboarding/);

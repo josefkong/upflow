@@ -125,116 +125,133 @@ enum TimeEntryStatus {
 }
 
 model User {
-  id                       String                  @id @default(uuid())
-  email                    String                  @unique
-  name                     String
-  phone                    String?
-  avatar_url               String?
-  role                     Role                    @default(member)
-  password_hash            String?
-  created_at               DateTime                @default(now())
-  projects                 Project[]
-  tasks                    Task[]                  @relation("AssignedTasks")
-  comments                 Comment[]
-  docs                     Doc[]
-  notifications            Notification[]
-  spaces                   Space[]
-  folders                  Folder[]
-  memberships              WorkspaceMember[]
-  invites_sent             WorkspaceInvite[]       @relation("Inviter")
-  calendar_events_created  CalendarEvent[]         @relation("CalendarEventsCreated")
-  calendar_events_responsible CalendarEvent[] @relation("CalendarEventsResponsible")
-  calendar_events_cancelled CalendarEvent[] @relation("CalendarEventsCancelled")
-  calendar_event_attendees CalendarEventAttendee[] @relation("CalendarEventAttendees")
-  calendar_event_attachments_created CalendarEventAttachment[] @relation("CalendarEventAttachmentCreator")
-  google_calendar_connections GoogleCalendarConnection[]
-  google_calendar_oauth_states GoogleCalendarOAuthState[]
-  google_calendar_sync_jobs  GoogleCalendarSyncJob[]
-  google_calendar_agenda_entries GoogleCalendarAgendaEntry[]
-  time_entries             TimeEntry[]
-  activity_events          ActivityEvent[]         @relation("ActivityActor")
-  companies_owned          Company[]               @relation("CompanyOwner")
-  project_memberships      ProjectMember[]
-  recurring_task_rules     RecurringTaskRule[]     @relation("RecurringTaskRuleCreator")
-  saved_views              SavedView[]
-  automation_rules         AutomationRule[]        @relation("AutomationRuleCreator")
-  automation_runs_started  AutomationRun[]         @relation("AutomationRunStarter")
-  goals_owned              Goal[]                  @relation("GoalOwner")
-  company_notes            CompanyNote[]           @relation("CompanyNoteAuthor")
-  templates_created        Template[]              @relation("TemplateCreator")
-  approval_requests_made   ApprovalRequest[]       @relation("ApprovalRequester")
-  approval_requests_owned  ApprovalRequest[]       @relation("ApprovalApprover")
-  approval_events          ApprovalEvent[]         @relation("ApprovalEventActor")
-  client_reports_authored  ClientReport[]          @relation("ClientReportAuthor")
-  client_reports_approved  ClientReport[]          @relation("ClientReportApprover")
-  client_reports_sent      ClientReport[]          @relation("ClientReportSender")
-  projects_sold            Project[]               @relation("ProjectResponsibleSalesperson")
-  onboarding_created       ClientOnboarding[]      @relation("ClientOnboardingCreator")
-  onboarding_sales         ClientOnboarding[]      @relation("ClientOnboardingSalesperson")
-  onboarding_items_owned   OnboardingChecklistItem[] @relation("OnboardingChecklistOwner")
-  onboarding_items_done    OnboardingChecklistItem[] @relation("OnboardingChecklistCompleter")
-  onboarding_assignments   OnboardingServiceAssignment[] @relation("OnboardingServiceLeader")
-  onboarding_meetings      OnboardingMeeting[]     @relation("OnboardingMeetingLeader")
-  onboarding_contracts     ClientContract[]        @relation("ClientContractUploader")
-  support_groups_created   SupportGroup[]          @relation("SupportGroupCreator")
-  service_leader_mappings  ServiceLeaderMapping[]  @relation("ServiceLeaderMappingLeader")
-  service_backup_mappings  ServiceLeaderMapping[]  @relation("ServiceLeaderMappingBackupLeader")
-  service_leader_mapping_backup_owners ServiceLeaderMappingBackupOwner[]
-  led_departments          Department[]           @relation("DepartmentLeader")
-  marketing_b2b_onboarding_forms_completed MarketingB2BOnboardingForm[] @relation("MarketingB2BOnboardingFormCompleter")
-  marketing_b2c_onboarding_forms_completed MarketingB2COnboardingForm[] @relation("MarketingB2COnboardingFormCompleter")
-  sidebar_client_pins      SidebarClientPin[]
-  sidebar_space_hides      SidebarSpaceHide[]
-  social_media_plans_managed SocialMediaContentPlan[] @relation("SocialMediaPlanManager")
-  social_media_plans_designed SocialMediaContentPlan[] @relation("SocialMediaPlanDesigner")
+  id                                       String                            @id @default(uuid())
+  email                                    String                            @unique
+  name                                     String
+  phone                                    String?
+  avatar_url                               String?
+  role                                     Role                              @default(member)
+  password_hash                            String?
+  created_at                               DateTime                          @default(now())
+  projects                                 Project[]
+  tasks                                    Task[]                            @relation("AssignedTasks")
+  task_following                           TaskFollower[]
+  comments                                 Comment[]
+  docs                                     Doc[]
+  notifications                            Notification[]
+  spaces                                   Space[]
+  folders                                  Folder[]
+  memberships                              WorkspaceMember[]
+  invites_sent                             WorkspaceInvite[]                 @relation("Inviter")
+  calendar_events_created                  CalendarEvent[]                   @relation("CalendarEventsCreated")
+  calendar_events_responsible              CalendarEvent[]                   @relation("CalendarEventsResponsible")
+  calendar_events_cancelled                CalendarEvent[]                   @relation("CalendarEventsCancelled")
+  calendar_event_attendees                 CalendarEventAttendee[]           @relation("CalendarEventAttendees")
+  calendar_event_attachments_created       CalendarEventAttachment[]         @relation("CalendarEventAttachmentCreator")
+  google_calendar_connections              GoogleCalendarConnection[]
+  google_calendar_oauth_states             GoogleCalendarOAuthState[]
+  google_calendar_sync_jobs                GoogleCalendarSyncJob[]
+  google_calendar_agenda_entries           GoogleCalendarAgendaEntry[]
+  time_entries                             TimeEntry[]
+  activity_events                          ActivityEvent[]                   @relation("ActivityActor")
+  companies_owned                          Company[]                         @relation("CompanyOwner")
+  project_memberships                      ProjectMember[]
+  recurring_task_rules                     RecurringTaskRule[]               @relation("RecurringTaskRuleCreator")
+  saved_views                              SavedView[]
+  automation_rules                         AutomationRule[]                  @relation("AutomationRuleCreator")
+  automation_runs_started                  AutomationRun[]                   @relation("AutomationRunStarter")
+  goals_owned                              Goal[]                            @relation("GoalOwner")
+  company_notes                            CompanyNote[]                     @relation("CompanyNoteAuthor")
+  templates_created                        Template[]                        @relation("TemplateCreator")
+  approval_requests_made                   ApprovalRequest[]                 @relation("ApprovalRequester")
+  approval_requests_owned                  ApprovalRequest[]                 @relation("ApprovalApprover")
+  approval_events                          ApprovalEvent[]                   @relation("ApprovalEventActor")
+  client_reports_authored                  ClientReport[]                    @relation("ClientReportAuthor")
+  client_reports_approved                  ClientReport[]                    @relation("ClientReportApprover")
+  client_reports_sent                      ClientReport[]                    @relation("ClientReportSender")
+  projects_sold                            Project[]                         @relation("ProjectResponsibleSalesperson")
+  onboarding_created                       ClientOnboarding[]                @relation("ClientOnboardingCreator")
+  onboarding_sales                         ClientOnboarding[]                @relation("ClientOnboardingSalesperson")
+  onboarding_items_owned                   OnboardingChecklistItem[]         @relation("OnboardingChecklistOwner")
+  onboarding_items_done                    OnboardingChecklistItem[]         @relation("OnboardingChecklistCompleter")
+  onboarding_assignments                   OnboardingServiceAssignment[]     @relation("OnboardingServiceLeader")
+  onboarding_meetings                      OnboardingMeeting[]               @relation("OnboardingMeetingLeader")
+  onboarding_contracts                     ClientContract[]                  @relation("ClientContractUploader")
+  support_groups_created                   SupportGroup[]                    @relation("SupportGroupCreator")
+  service_leader_mappings                  ServiceLeaderMapping[]            @relation("ServiceLeaderMappingLeader")
+  service_backup_mappings                  ServiceLeaderMapping[]            @relation("ServiceLeaderMappingBackupLeader")
+  service_leader_mapping_backup_owners     ServiceLeaderMappingBackupOwner[]
+  led_departments                          Department[]                      @relation("DepartmentLeader")
+  marketing_b2b_onboarding_forms_completed MarketingB2BOnboardingForm[]      @relation("MarketingB2BOnboardingFormCompleter")
+  marketing_b2c_onboarding_forms_completed MarketingB2COnboardingForm[]      @relation("MarketingB2COnboardingFormCompleter")
+  sidebar_client_pins                      SidebarClientPin[]
+  sidebar_space_hides                      SidebarSpaceHide[]
+  social_media_plans_managed               SocialMediaContentPlan[]          @relation("SocialMediaPlanManager")
+  social_media_plans_designed              SocialMediaContentPlan[]          @relation("SocialMediaPlanDesigner")
+  commercial_leads_assigned                CommercialLead[]                  @relation("CommercialLeadAssignee")
+  commercial_leads_created                 CommercialLead[]                  @relation("CommercialLeadCreator")
+  commercial_proposals_uploaded            CommercialLead[]                  @relation("CommercialLeadProposalUploader")
+  commercial_proposal_archive_uploads      CommercialProposalDocument[]      @relation("CommercialProposalDocumentUploader")
+  equipment_items_created                  EquipmentItem[]                   @relation("EquipmentItemCreator")
+  equipment_items_held                     EquipmentItem[]                   @relation("EquipmentCurrentHolder")
+  equipment_items_last_held                EquipmentItem[]                   @relation("EquipmentLastHolder")
+  equipment_checkouts_requested            EquipmentCheckout[]               @relation("EquipmentCheckoutRequester")
+  equipment_checkouts_administered         EquipmentCheckout[]               @relation("EquipmentCheckoutAdministrator")
+  equipment_custody_events_acted           EquipmentCustodyEvent[]           @relation("EquipmentCustodyEventActor")
+  equipment_custody_events_held            EquipmentCustodyEvent[]           @relation("EquipmentCustodyEventHolder")
 }
 
 model Workspace {
-  id                   String              @id @default(uuid())
-  name                 String
-  slug                 String              @unique
-  created_at           DateTime            @default(now())
-  members              WorkspaceMember[]
-  invites              WorkspaceInvite[]
-  spaces               Space[]
-  folders              Folder[]
-  projects             Project[]
-  docs                 Doc[]
-  notifications        Notification[]
-  departments          Department[]
-  calendar_events      CalendarEvent[]
-  google_calendar_connections GoogleCalendarConnection[]
-  google_calendar_oauth_states GoogleCalendarOAuthState[]
-  google_calendar_sync_jobs  GoogleCalendarSyncJob[]
+  id                             String                        @id @default(uuid())
+  name                           String
+  slug                           String                        @unique
+  created_at                     DateTime                      @default(now())
+  members                        WorkspaceMember[]
+  invites                        WorkspaceInvite[]
+  spaces                         Space[]
+  folders                        Folder[]
+  projects                       Project[]
+  docs                           Doc[]
+  notifications                  Notification[]
+  departments                    Department[]
+  calendar_events                CalendarEvent[]
+  google_calendar_connections    GoogleCalendarConnection[]
+  google_calendar_oauth_states   GoogleCalendarOAuthState[]
+  google_calendar_sync_jobs      GoogleCalendarSyncJob[]
   google_calendar_agenda_entries GoogleCalendarAgendaEntry[]
-  time_entries         TimeEntry[]
-  activity_events      ActivityEvent[]
-  companies            Company[]
-  company_contacts     CompanyContact[]
-  company_notes        CompanyNote[]
-  templates            Template[]
-  recurring_task_rules RecurringTaskRule[]
-  saved_views          SavedView[]
-  automation_rules     AutomationRule[]
-  automation_runs      AutomationRun[]
-  goals                Goal[]
-  workflow_statuses    WorkflowStatus[]
-  approval_requests    ApprovalRequest[]
-  approval_events      ApprovalEvent[]
-  client_reports       ClientReport[]
-  client_onboardings   ClientOnboarding[]
-  onboarding_items     OnboardingChecklistItem[]
-  onboarding_assignments OnboardingServiceAssignment[]
-  onboarding_meetings  OnboardingMeeting[]
-  client_contracts     ClientContract[]
-  client_addresses     ClientAddress[]
-  support_groups       SupportGroup[]
-  service_leader_mappings ServiceLeaderMapping[]
+  time_entries                   TimeEntry[]
+  activity_events                ActivityEvent[]
+  companies                      Company[]
+  company_contacts               CompanyContact[]
+  company_notes                  CompanyNote[]
+  templates                      Template[]
+  recurring_task_rules           RecurringTaskRule[]
+  saved_views                    SavedView[]
+  automation_rules               AutomationRule[]
+  automation_runs                AutomationRun[]
+  goals                          Goal[]
+  workflow_statuses              WorkflowStatus[]
+  approval_requests              ApprovalRequest[]
+  approval_events                ApprovalEvent[]
+  client_reports                 ClientReport[]
+  client_onboardings             ClientOnboarding[]
+  onboarding_items               OnboardingChecklistItem[]
+  onboarding_assignments         OnboardingServiceAssignment[]
+  onboarding_meetings            OnboardingMeeting[]
+  client_contracts               ClientContract[]
+  client_addresses               ClientAddress[]
+  support_groups                 SupportGroup[]
+  service_leader_mappings        ServiceLeaderMapping[]
   marketing_b2b_onboarding_forms MarketingB2BOnboardingForm[]
   marketing_b2c_onboarding_forms MarketingB2COnboardingForm[]
-  sidebar_client_pins     SidebarClientPin[]
-  sidebar_space_hides     SidebarSpaceHide[]
-  import_jobs           ImportJob[]
+  sidebar_client_pins            SidebarClientPin[]
+  sidebar_space_hides            SidebarSpaceHide[]
+  import_jobs                    ImportJob[]
+  commercial_leads               CommercialLead[]
+  commercial_proposal_documents  CommercialProposalDocument[]
+  equipment_items                EquipmentItem[]
+  equipment_checkouts            EquipmentCheckout[]
+  equipment_custody_events       EquipmentCustodyEvent[]
 }
 
 enum ImportJobStatus {
@@ -250,8 +267,8 @@ enum ImportJobStatus {
 model ImportJob {
   id                  String          @id @default(uuid())
   workspace_id        String
-  source_workspace_id  String
-  selected_source_ids  Json
+  source_workspace_id String
+  selected_source_ids Json
   status              ImportJobStatus @default(previewed)
   cursor              Int             @default(0)
   total               Int             @default(0)
@@ -272,18 +289,18 @@ model ImportJob {
 }
 
 model ImportMapping {
-  id                 String   @id @default(uuid())
-  job_id             String
-  workspace_id       String
+  id                  String    @id @default(uuid())
+  job_id              String
+  workspace_id        String
   source_workspace_id String
-  entity_type        String
-  source_id          String
-  target_id          String?
-  status             String   @default("imported")
-  error              String?
-  created_at         DateTime @default(now())
-  updated_at         DateTime @updatedAt
-  job                ImportJob @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  entity_type         String
+  source_id           String
+  target_id           String?
+  status              String    @default("imported")
+  error               String?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  job                 ImportJob @relation(fields: [job_id], references: [id], onDelete: Cascade)
 
   @@unique([source_workspace_id, entity_type, source_id])
   @@index([job_id, status])
@@ -311,17 +328,17 @@ model WorkspaceMember {
 }
 
 model Department {
-  id           String            @id @default(uuid())
-  workspace_id String
-  name         String
-  color        String            @default("slate")
-  sort_order   Int               @default(0)
-  leader_id    String?
-  created_at   DateTime          @default(now())
-  workspace    Workspace         @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  leader       User?             @relation("DepartmentLeader", fields: [leader_id], references: [id], onDelete: SetNull)
-  members      WorkspaceMember[]
-  onboarding_assignments OnboardingServiceAssignment[]
+  id                      String                        @id @default(uuid())
+  workspace_id            String
+  name                    String
+  color                   String                        @default("slate")
+  sort_order              Int                           @default(0)
+  leader_id               String?
+  created_at              DateTime                      @default(now())
+  workspace               Workspace                     @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  leader                  User?                         @relation("DepartmentLeader", fields: [leader_id], references: [id], onDelete: SetNull)
+  members                 WorkspaceMember[]
+  onboarding_assignments  OnboardingServiceAssignment[]
   service_leader_mappings ServiceLeaderMapping[]
 
   @@unique([workspace_id, name])
@@ -357,20 +374,20 @@ model WorkspaceInvite {
 }
 
 model Space {
-  id           String    @id @default(uuid())
-  name         String
-  icon         String?
-  workspace_id String
-  owner_id     String
-  position     Int       @default(0)
-  sidebar_hidden Boolean @default(false)
-  created_at   DateTime  @default(now())
-  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  owner        User      @relation(fields: [owner_id], references: [id])
-  projects     Project[]
-  folders      Folder[]
-  workflow_statuses WorkflowStatus[]
-  calendar_events CalendarEvent[]
+  id                  String             @id @default(uuid())
+  name                String
+  icon                String?
+  workspace_id        String
+  owner_id            String
+  position            Int                @default(0)
+  sidebar_hidden      Boolean            @default(false)
+  created_at          DateTime           @default(now())
+  workspace           Workspace          @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  owner               User               @relation(fields: [owner_id], references: [id])
+  projects            Project[]
+  folders             Folder[]
+  workflow_statuses   WorkflowStatus[]
+  calendar_events     CalendarEvent[]
   sidebar_space_hides SidebarSpaceHide[]
 
   @@index([workspace_id])
@@ -379,22 +396,22 @@ model Space {
 }
 
 model Folder {
-  id           String    @id @default(uuid())
-  name         String
-  icon         String?
-  space_id     String
-  workspace_id String
-  owner_id     String
-  parent_id    String?
-  position     Int       @default(0)
-  sidebar_hidden Boolean @default(false)
-  created_at   DateTime  @default(now())
-  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  space        Space     @relation(fields: [space_id], references: [id], onDelete: Cascade)
-  owner        User      @relation(fields: [owner_id], references: [id])
-  parent       Folder?   @relation("FolderChildren", fields: [parent_id], references: [id], onDelete: SetNull)
-  children     Folder[]  @relation("FolderChildren")
-  projects     Project[]
+  id             String    @id @default(uuid())
+  name           String
+  icon           String?
+  space_id       String
+  workspace_id   String
+  owner_id       String
+  parent_id      String?
+  position       Int       @default(0)
+  sidebar_hidden Boolean   @default(false)
+  created_at     DateTime  @default(now())
+  workspace      Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  space          Space     @relation(fields: [space_id], references: [id], onDelete: Cascade)
+  owner          User      @relation(fields: [owner_id], references: [id])
+  parent         Folder?   @relation("FolderChildren", fields: [parent_id], references: [id], onDelete: SetNull)
+  children       Folder[]  @relation("FolderChildren")
+  projects       Project[]
 
   @@index([workspace_id])
   @@index([parent_id])
@@ -404,47 +421,50 @@ model Folder {
 }
 
 model Project {
-  id                    String                  @id @default(uuid())
-  name                  String
-  description           String?
-  status                ProjectStatus           @default(active)
-  kind                  ProjectKind             @default(internal)
-  approval_status       String                  @default("draft")
-  approval_stage        String                  @default("draft")
-  approval_requested_at DateTime?
-  approval_approved_at  DateTime?
-  workspace_id          String
-  owner_id              String
-  space_id              String?
-  folder_id             String?
-  company_id            String?
-  onboarding_enabled    Boolean                 @default(false)
-  sidebar_hidden        Boolean                 @default(false)
-  closing_date          DateTime?
-  onboarding_start_date DateTime?
-  responsible_salesperson_id String?
-  initial_notes         String?
-  due_date              DateTime?
-  created_at            DateTime                @default(now())
-  workspace             Workspace               @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  owner                 User                    @relation(fields: [owner_id], references: [id])
-  space                 Space?                  @relation(fields: [space_id], references: [id], onDelete: SetNull)
-  folder                Folder?                 @relation(fields: [folder_id], references: [id], onDelete: SetNull)
-  company               Company?                @relation(fields: [company_id], references: [id], onDelete: SetNull)
-  tasks                 Task[]
-  docs                  Doc[]
-  custom_fields         CustomFieldDefinition[]
-  calendar_events       CalendarEvent[]
-  time_entries          TimeEntry[]
-  project_members       ProjectMember[]
-  recurring_task_rules  RecurringTaskRule[]
-  workflow_statuses     WorkflowStatus[]
-  client_onboarding     ClientOnboarding?
-  onboarding_contracts  ClientContract[]
+  id                             String                       @id @default(uuid())
+  name                           String
+  description                    String?
+  status                         ProjectStatus                @default(active)
+  kind                           ProjectKind                  @default(internal)
+  approval_status                String                       @default("draft")
+  approval_stage                 String                       @default("draft")
+  approval_requested_at          DateTime?
+  approval_approved_at           DateTime?
+  workspace_id                   String
+  owner_id                       String
+  space_id                       String?
+  folder_id                      String?
+  company_id                     String?
+  onboarding_enabled             Boolean                      @default(false)
+  sidebar_hidden                 Boolean                      @default(false)
+  closing_date                   DateTime?
+  onboarding_start_date          DateTime?
+  responsible_salesperson_id     String?
+  initial_notes                  String?
+  due_date                       DateTime?
+  position                       Int                          @default(0)
+  created_at                     DateTime                     @default(now())
+  workspace                      Workspace                    @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  owner                          User                         @relation(fields: [owner_id], references: [id])
+  space                          Space?                       @relation(fields: [space_id], references: [id], onDelete: SetNull)
+  folder                         Folder?                      @relation(fields: [folder_id], references: [id], onDelete: SetNull)
+  company                        Company?                     @relation(fields: [company_id], references: [id], onDelete: SetNull)
+  tasks                          Task[]
+  docs                           Doc[]
+  custom_fields                  CustomFieldDefinition[]
+  calendar_events                CalendarEvent[]
+  time_entries                   TimeEntry[]
+  project_members                ProjectMember[]
+  recurring_task_rules           RecurringTaskRule[]
+  workflow_statuses              WorkflowStatus[]
+  client_onboarding              ClientOnboarding?
+  onboarding_contracts           ClientContract[]
   marketing_b2b_onboarding_forms MarketingB2BOnboardingForm[]
   marketing_b2c_onboarding_forms MarketingB2COnboardingForm[]
-  responsible_salesperson User?                 @relation("ProjectResponsibleSalesperson", fields: [responsible_salesperson_id], references: [id], onDelete: SetNull)
-  social_media_content_plans SocialMediaContentPlan[]
+  responsible_salesperson        User?                        @relation("ProjectResponsibleSalesperson", fields: [responsible_salesperson_id], references: [id], onDelete: SetNull)
+  social_media_content_plans     SocialMediaContentPlan[]
+  equipment_items                EquipmentItem[]
+  equipment_checkouts            EquipmentCheckout[]
 
   @@index([workspace_id])
   @@index([workspace_id, status, due_date])
@@ -452,48 +472,56 @@ model Project {
   @@index([workspace_id, company_id, kind])
   @@index([workspace_id, space_id, created_at])
   @@index([workspace_id, folder_id, created_at])
+  @@index([workspace_id, space_id, folder_id, position, created_at], map: "Project_sidebar_position_idx")
   @@index([workspace_id, sidebar_hidden, created_at])
   @@index([company_id])
   @@index([responsible_salesperson_id])
 }
 
 model Task {
-  id                    String              @id @default(uuid())
-  title                 String
-  description           String?
-  status                TaskStatus          @default(todo)
-  approval_status       String              @default("draft")
-  approval_stage        String              @default("draft")
-  approval_requested_at DateTime?
-  approval_approved_at  DateTime?
-  priority              TaskPriority        @default(medium)
-  project_id            String
-  assignee_id           String?
-  parent_id             String?
-  company_id            String?
-  cover_image_url       String?
-  due_date              DateTime?
-  position              Int                 @default(0)
-  created_at            DateTime            @default(now())
-  project               Project             @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  assignee              User?               @relation("AssignedTasks", fields: [assignee_id], references: [id])
-  parent                Task?               @relation("Subtasks", fields: [parent_id], references: [id])
-  subtasks              Task[]              @relation("Subtasks")
-  company               Company?            @relation(fields: [company_id], references: [id], onDelete: SetNull)
-  comments              Comment[]
-  notifications         Notification[]
-  custom_field_values   CustomFieldValue[]
-  calendar_events       CalendarEvent[]
-  time_entries          TimeEntry[]
-  dependencies          TaskDependency[]    @relation("TaskDependencies")
-  dependents            TaskDependency[]    @relation("TaskDependents")
-  recurring_rules       RecurringTaskRule[]
-  onboarding_items      OnboardingChecklistItem[]
+  id                            String                      @id @default(uuid())
+  title                         String
+  description                   String?
+  status                        TaskStatus                  @default(todo)
+  approval_status               String                      @default("draft")
+  approval_stage                String                      @default("draft")
+  approval_requested_at         DateTime?
+  approval_approved_at          DateTime?
+  priority                      TaskPriority                @default(medium)
+  project_id                    String
+  assignee_id                   String?
+  parent_id                     String?
+  company_id                    String?
+  cover_image_url               String?
+  due_date                      DateTime?
+  position                      Int                         @default(0)
+  created_at                    DateTime                    @default(now())
+  project                       Project                     @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  assignee                      User?                       @relation("AssignedTasks", fields: [assignee_id], references: [id])
+  parent                        Task?                       @relation("Subtasks", fields: [parent_id], references: [id])
+  subtasks                      Task[]                      @relation("Subtasks")
+  company                       Company?                    @relation(fields: [company_id], references: [id], onDelete: SetNull)
+  comments                      Comment[]
+  notifications                 Notification[]
+  custom_field_values           CustomFieldValue[]
+  calendar_events               CalendarEvent[]
+  time_entries                  TimeEntry[]
+  dependencies                  TaskDependency[]            @relation("TaskDependencies")
+  dependents                    TaskDependency[]            @relation("TaskDependents")
+  recurring_rules               RecurringTaskRule[]
+  onboarding_items              OnboardingChecklistItem[]
   marketing_b2b_onboarding_form MarketingB2BOnboardingForm?
   marketing_b2c_onboarding_form MarketingB2COnboardingForm?
-  social_media_plan_id  String?
-  social_media_plan     SocialMediaContentPlan? @relation("SocialMediaContentPlanTasks", fields: [social_media_plan_id], references: [id], onDelete: SetNull)
-  moodboard_for_plan    SocialMediaContentPlan? @relation("SocialMediaMoodboardTask")
+  social_media_plan_id          String?
+  social_media_plan             SocialMediaContentPlan?     @relation("SocialMediaContentPlanTasks", fields: [social_media_plan_id], references: [id], onDelete: SetNull)
+  moodboard_for_plan            SocialMediaContentPlan?     @relation("SocialMediaMoodboardTask")
+  commercial_lead               CommercialLead?             @relation("CommercialLeadTask")
+  commercial_proposal_checklist CommercialLead?             @relation("CommercialLeadProposalChecklist")
+  commercial_follow_up          CommercialLead?             @relation("CommercialLeadFollowUpTask")
+  commercial_contract_handoff   CommercialLead?             @relation("CommercialLeadContractHandoffTask")
+  commercial_finance_contract   CommercialLead?             @relation("CommercialLeadFinanceContractTask")
+  followers                     TaskFollower[]
+  equipment_checkout            EquipmentCheckout?
 
   @@index([company_id])
   @@index([project_id, status, position])
@@ -503,6 +531,18 @@ model Task {
   @@index([parent_id])
   @@index([due_date])
   @@index([social_media_plan_id])
+}
+
+model TaskFollower {
+  id         String   @id @default(uuid())
+  task_id    String
+  user_id    String
+  created_at DateTime @default(now())
+  task       Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([task_id, user_id])
+  @@index([user_id])
 }
 
 model CustomFieldDefinition {
@@ -533,42 +573,44 @@ model CustomFieldValue {
 }
 
 model CalendarEvent {
-  id           String                  @id @default(uuid())
-  workspace_id String
-  title        String
-  description  String?
-  type         CalendarEventType       @default(meeting)
-  starts_at    DateTime
-  ends_at      DateTime?
-  timezone     String?
-  created_by   String
-  project_id   String?
-  task_id      String?
-  company_id   String?
-  space_id     String?
-  responsible_user_id String?
-  priority     TaskPriority @default(medium)
-  status       CalendarEventStatus @default(scheduled)
-  cancelled_at DateTime?
-  cancelled_by String?
-  location     String?
-  meeting_url  String?
-  color        String?
-  created_at   DateTime                @default(now())
-  updated_at   DateTime                @updatedAt
-  workspace    Workspace               @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  creator      User                    @relation("CalendarEventsCreated", fields: [created_by], references: [id], onDelete: Cascade)
-  project      Project?                @relation(fields: [project_id], references: [id], onDelete: SetNull)
-  task         Task?                   @relation(fields: [task_id], references: [id], onDelete: SetNull)
-  company      Company?                @relation(fields: [company_id], references: [id], onDelete: SetNull)
-  space        Space?                  @relation(fields: [space_id], references: [id], onDelete: SetNull)
-  responsible  User?                   @relation("CalendarEventsResponsible", fields: [responsible_user_id], references: [id], onDelete: SetNull)
-  cancelled_by_user User?              @relation("CalendarEventsCancelled", fields: [cancelled_by], references: [id], onDelete: SetNull)
-  attendees    CalendarEventAttendee[]
-  reminders    CalendarEventReminder[]
-  attachments  CalendarEventAttachment[]
-  google_calendar_links GoogleCalendarEventLink[]
-  google_calendar_sync_jobs GoogleCalendarSyncJob[]
+  id                           String                    @id @default(uuid())
+  workspace_id                 String
+  title                        String
+  description                  String?
+  type                         CalendarEventType         @default(meeting)
+  starts_at                    DateTime
+  ends_at                      DateTime?
+  timezone                     String?
+  created_by                   String
+  project_id                   String?
+  task_id                      String?
+  company_id                   String?
+  space_id                     String?
+  responsible_user_id          String?
+  priority                     TaskPriority              @default(medium)
+  status                       CalendarEventStatus       @default(scheduled)
+  cancelled_at                 DateTime?
+  cancelled_by                 String?
+  location                     String?
+  meeting_url                  String?
+  google_meet_requested        Boolean                   @default(false)
+  color                        String?
+  created_at                   DateTime                  @default(now())
+  updated_at                   DateTime                  @updatedAt
+  workspace                    Workspace                 @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  creator                      User                      @relation("CalendarEventsCreated", fields: [created_by], references: [id], onDelete: Cascade)
+  project                      Project?                  @relation(fields: [project_id], references: [id], onDelete: SetNull)
+  task                         Task?                     @relation(fields: [task_id], references: [id], onDelete: SetNull)
+  company                      Company?                  @relation(fields: [company_id], references: [id], onDelete: SetNull)
+  space                        Space?                    @relation(fields: [space_id], references: [id], onDelete: SetNull)
+  responsible                  User?                     @relation("CalendarEventsResponsible", fields: [responsible_user_id], references: [id], onDelete: SetNull)
+  cancelled_by_user            User?                     @relation("CalendarEventsCancelled", fields: [cancelled_by], references: [id], onDelete: SetNull)
+  attendees                    CalendarEventAttendee[]
+  reminders                    CalendarEventReminder[]
+  attachments                  CalendarEventAttachment[]
+  google_calendar_links        GoogleCalendarEventLink[]
+  google_calendar_sync_jobs    GoogleCalendarSyncJob[]
+  commercial_lead_presentation CommercialLead?           @relation("CommercialLeadPresentationEvent")
 
   @@index([workspace_id, starts_at])
   @@index([created_by])
@@ -578,6 +620,212 @@ model CalendarEvent {
   @@index([space_id])
   @@index([responsible_user_id])
   @@index([workspace_id, status, starts_at])
+}
+
+model CommercialLead {
+  id                                     String                       @id @default(uuid())
+  workspace_id                           String
+  task_id                                String                       @unique
+  presentation_event_id                  String?                      @unique
+  proposal_checklist_task_id             String?                      @unique
+  follow_up_task_id                      String?                      @unique
+  contract_handoff_task_id               String?                      @unique
+  finance_contract_task_id               String?                      @unique
+  brand_name                             String
+  owner_name                             String
+  owner_email                            String
+  instagram                              String
+  monthly_revenue                        Decimal                      @db.Decimal(14, 2)
+  whatsapp                               String
+  notes                                  String
+  presentation_starts_at                 DateTime?
+  presentation_ends_at                   DateTime?
+  assignee_id                            String
+  company_type                           String
+  observations                           String?
+  stage                                  String                       @default("lead")
+  presentation_confirmation_requested_at DateTime?
+  presentation_confirmed_at              DateTime?
+  qualified_at                           DateTime?
+  archived_at                            DateTime?
+  archive_reason                         String?
+  group_up_plan                          String?
+  group_up_monthly_fee                   Decimal?                     @db.Decimal(14, 2)
+  up_zero_plan                           String?
+  up_zero_monthly_fee                    Decimal?                     @db.Decimal(14, 2)
+  up_zero_implementation_fee             Decimal?                     @db.Decimal(14, 2)
+  negotiated_scope                       Json?
+  negotiation_checklist_completed_at     DateTime?
+  proposal_file_name                     String?
+  proposal_storage_bucket                String?
+  proposal_storage_path                  String?
+  proposal_mime_type                     String?
+  proposal_size_bytes                    Int?
+  proposal_uploaded_by                   String?
+  proposal_uploaded_at                   DateTime?
+  next_follow_up_at                      DateTime?
+  follow_up_count                        Int                          @default(0)
+  follow_up_stage                        String?
+  follow_up_notification_sent_at         DateTime?
+  contract_cnpj                          String?
+  contract_legal_name                    String?
+  contract_plan                          String?
+  contract_services                      Json?
+  contract_monthly_fee                   Decimal?                     @db.Decimal(14, 2)
+  contract_confirmed_at                  DateTime?
+  closed_at                              DateTime?
+  created_by                             String
+  created_at                             DateTime                     @default(now())
+  updated_at                             DateTime                     @updatedAt
+  workspace                              Workspace                    @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  task                                   Task                         @relation("CommercialLeadTask", fields: [task_id], references: [id], onDelete: Cascade)
+  presentation_event                     CalendarEvent?               @relation("CommercialLeadPresentationEvent", fields: [presentation_event_id], references: [id], onDelete: SetNull)
+  proposal_checklist_task                Task?                        @relation("CommercialLeadProposalChecklist", fields: [proposal_checklist_task_id], references: [id], onDelete: SetNull)
+  follow_up_task                         Task?                        @relation("CommercialLeadFollowUpTask", fields: [follow_up_task_id], references: [id], onDelete: SetNull)
+  contract_handoff_task                  Task?                        @relation("CommercialLeadContractHandoffTask", fields: [contract_handoff_task_id], references: [id], onDelete: SetNull)
+  finance_contract_task                  Task?                        @relation("CommercialLeadFinanceContractTask", fields: [finance_contract_task_id], references: [id], onDelete: SetNull)
+  assignee                               User                         @relation("CommercialLeadAssignee", fields: [assignee_id], references: [id], onDelete: Restrict)
+  creator                                User                         @relation("CommercialLeadCreator", fields: [created_by], references: [id], onDelete: Restrict)
+  proposal_uploader                      User?                        @relation("CommercialLeadProposalUploader", fields: [proposal_uploaded_by], references: [id], onDelete: SetNull)
+  proposal_documents                     CommercialProposalDocument[]
+
+  @@index([workspace_id, stage])
+  @@index([assignee_id, stage])
+  @@index([presentation_ends_at, presentation_confirmation_requested_at])
+  @@index([next_follow_up_at, stage])
+  @@index([follow_up_task_id, follow_up_stage])
+  @@index([contract_handoff_task_id])
+  @@index([finance_contract_task_id])
+}
+
+model CommercialProposalDocument {
+  id                   String          @id @default(uuid())
+  workspace_id         String
+  commercial_lead_id   String?
+  brand_name           String
+  owner_name           String
+  owner_email          String
+  storage_bucket       String
+  storage_path         String          @unique
+  file_name            String
+  mime_type            String?
+  size_bytes           Int?
+  uploaded_by          String?
+  uploaded_at          DateTime        @default(now())
+  confirmed_at         DateTime?
+  removed_from_lead_at DateTime?
+  workspace            Workspace       @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  commercial_lead      CommercialLead? @relation(fields: [commercial_lead_id], references: [id], onDelete: SetNull)
+  uploader             User?           @relation("CommercialProposalDocumentUploader", fields: [uploaded_by], references: [id], onDelete: SetNull)
+
+  @@index([workspace_id, uploaded_at])
+  @@index([commercial_lead_id, uploaded_at])
+  @@index([workspace_id, brand_name])
+}
+
+model EquipmentItem {
+  id                String                  @id @default(uuid())
+  workspace_id      String
+  project_id        String
+  name              String
+  category          String
+  asset_code        String
+  brand             String?
+  model             String?
+  serial_number     String?
+  description       String?
+  status            String                  @default("available")
+  condition         String                  @default("good")
+  current_holder_id String?
+  last_holder_id    String?
+  created_by        String
+  active            Boolean                 @default(true)
+  created_at        DateTime                @default(now())
+  updated_at        DateTime                @updatedAt
+  workspace         Workspace               @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  project           Project                 @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  current_holder    User?                   @relation("EquipmentCurrentHolder", fields: [current_holder_id], references: [id], onDelete: SetNull)
+  last_holder       User?                   @relation("EquipmentLastHolder", fields: [last_holder_id], references: [id], onDelete: SetNull)
+  creator           User                    @relation("EquipmentItemCreator", fields: [created_by], references: [id], onDelete: Restrict)
+  checkouts         EquipmentCheckout[]
+  custody_events    EquipmentCustodyEvent[]
+
+  @@unique([workspace_id, asset_code])
+  @@index([project_id, status, name])
+  @@index([workspace_id, status])
+  @@index([current_holder_id])
+  @@index([last_holder_id])
+}
+
+model EquipmentCheckout {
+  id                                String                  @id @default(uuid())
+  workspace_id                      String
+  project_id                        String
+  equipment_id                      String
+  task_id                           String?                 @unique
+  requester_id                      String
+  administrator_id                  String?
+  status                            String                  @default("requested")
+  purpose                           String
+  expected_return_at                DateTime
+  condition_out                     String?
+  condition_in                      String?
+  handover_notes                    String?
+  return_notes                      String?
+  damage_notes                      String?
+  terms_version                     String?
+  terms_accepted_at                 DateTime?
+  handover_photo_paths              String[]                @default([])
+  requester_photo_confirmation_at   DateTime?
+  damage_photo_paths                String[]                @default([])
+  inspection_agreement_confirmed_at DateTime?
+  damage_notice_confirmed_at        DateTime?
+  overdue_notified_at               DateTime?
+  requested_at                      DateTime                @default(now())
+  admin_handover_confirmed_at       DateTime?
+  requester_receipt_confirmed_at    DateTime?
+  return_requested_at               DateTime?
+  admin_return_confirmed_at         DateTime?
+  cancelled_at                      DateTime?
+  created_at                        DateTime                @default(now())
+  updated_at                        DateTime                @updatedAt
+  workspace                         Workspace               @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  project                           Project                 @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  equipment                         EquipmentItem           @relation(fields: [equipment_id], references: [id], onDelete: Cascade)
+  task                              Task?                   @relation(fields: [task_id], references: [id], onDelete: SetNull)
+  requester                         User                    @relation("EquipmentCheckoutRequester", fields: [requester_id], references: [id], onDelete: Restrict)
+  administrator                     User?                   @relation("EquipmentCheckoutAdministrator", fields: [administrator_id], references: [id], onDelete: SetNull)
+  custody_events                    EquipmentCustodyEvent[]
+
+  @@index([workspace_id, status, requested_at])
+  @@index([status, expected_return_at])
+  @@index([project_id, status])
+  @@index([equipment_id, status])
+  @@index([requester_id, status])
+  @@index([administrator_id])
+}
+
+model EquipmentCustodyEvent {
+  id           String             @id @default(uuid())
+  workspace_id String
+  equipment_id String
+  checkout_id  String?
+  actor_id     String?
+  holder_id    String?
+  event_type   String
+  condition    String?
+  notes        String?
+  created_at   DateTime           @default(now())
+  workspace    Workspace          @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  equipment    EquipmentItem      @relation(fields: [equipment_id], references: [id], onDelete: Cascade)
+  checkout     EquipmentCheckout? @relation(fields: [checkout_id], references: [id], onDelete: SetNull)
+  actor        User?              @relation("EquipmentCustodyEventActor", fields: [actor_id], references: [id], onDelete: SetNull)
+  holder       User?              @relation("EquipmentCustodyEventHolder", fields: [holder_id], references: [id], onDelete: SetNull)
+
+  @@index([workspace_id, created_at])
+  @@index([equipment_id, created_at])
+  @@index([checkout_id, created_at])
+  @@index([holder_id, created_at])
 }
 
 model CalendarEventAttendee {
@@ -627,31 +875,31 @@ model CalendarEventAttachment {
 }
 
 model GoogleCalendarConnection {
-  id                       String   @id @default(uuid())
+  id                       String                      @id @default(uuid())
   workspace_id             String
   user_id                  String
   google_subject           String?
   google_email             String?
   google_name              String?
-  calendar_id              String   @default("primary")
+  calendar_id              String                      @default("primary")
   calendar_name            String?
-  access_token_ciphertext  String?  @db.Text
-  refresh_token_ciphertext String?  @db.Text
+  access_token_ciphertext  String?                     @db.Text
+  refresh_token_ciphertext String?                     @db.Text
   token_expires_at         DateTime?
-  scope                    String?  @db.Text
-  sync_enabled             Boolean  @default(true)
+  scope                    String?                     @db.Text
+  sync_enabled             Boolean                     @default(true)
   // Active workspace members can view this user's sanitized Google agenda in
   // UpFlow. The provider credentials and sensitive event metadata stay server-only.
-  share_agenda             Boolean  @default(true)
+  share_agenda             Boolean                     @default(true)
   disconnected_at          DateTime?
   last_synced_at           DateTime?
-  last_error               String?  @db.Text
+  last_error               String?                     @db.Text
   agenda_last_synced_at    DateTime?
-  agenda_last_error        String?  @db.Text
-  created_at               DateTime @default(now())
-  updated_at               DateTime @updatedAt
-  workspace                Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  user                     User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  agenda_last_error        String?                     @db.Text
+  created_at               DateTime                    @default(now())
+  updated_at               DateTime                    @updatedAt
+  workspace                Workspace                   @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  user                     User                        @relation(fields: [user_id], references: [id], onDelete: Cascade)
   event_links              GoogleCalendarEventLink[]
   sync_jobs                GoogleCalendarSyncJob[]
   agenda_entries           GoogleCalendarAgendaEntry[]
@@ -667,7 +915,7 @@ model GoogleCalendarConnection {
 // It is intentionally separate from CalendarEvent so external items cannot be
 // edited, deleted, or synced back to Google through UpFlow's event workflow.
 model GoogleCalendarAgendaEntry {
-  id                 String   @id @default(uuid())
+  id                 String                   @id @default(uuid())
   workspace_id       String
   user_id            String
   connection_id      String
@@ -676,13 +924,13 @@ model GoogleCalendarAgendaEntry {
   title              String
   starts_at          DateTime
   ends_at            DateTime
-  all_day            Boolean  @default(false)
-  is_private         Boolean  @default(false)
+  all_day            Boolean                  @default(false)
+  is_private         Boolean                  @default(false)
   source_updated_at  DateTime?
-  created_at         DateTime @default(now())
-  updated_at         DateTime @updatedAt
-  workspace          Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  user               User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  created_at         DateTime                 @default(now())
+  updated_at         DateTime                 @updatedAt
+  workspace          Workspace                @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  user               User                     @relation(fields: [user_id], references: [id], onDelete: Cascade)
   connection         GoogleCalendarConnection @relation(fields: [connection_id], references: [id], onDelete: Cascade)
 
   @@unique([connection_id, google_calendar_id, google_event_id])
@@ -692,14 +940,14 @@ model GoogleCalendarAgendaEntry {
 }
 
 model GoogleCalendarOAuthState {
-  id                       String   @id @default(uuid())
-  state_hash               String   @unique @db.Text
-  code_verifier_ciphertext String   @db.Text
-  redirect_uri             String   @db.Text
+  id                       String    @id @default(uuid())
+  state_hash               String    @unique @db.Text
+  code_verifier_ciphertext String    @db.Text
+  redirect_uri             String    @db.Text
   workspace_id             String
   user_id                  String
   expires_at               DateTime
-  created_at               DateTime @default(now())
+  created_at               DateTime  @default(now())
   workspace                Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
   user                     User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
@@ -708,20 +956,20 @@ model GoogleCalendarOAuthState {
 }
 
 model GoogleCalendarEventLink {
-  id                 String                    @id @default(uuid())
+  id                 String                   @id @default(uuid())
   event_id           String
   connection_id      String
   google_calendar_id String
   google_event_id    String?
   google_event_etag  String?
-  google_event_url   String?                   @db.Text
-  sync_status        GoogleCalendarSyncStatus  @default(pending)
+  google_event_url   String?                  @db.Text
+  sync_status        GoogleCalendarSyncStatus @default(pending)
   last_synced_at     DateTime?
-  last_error         String?                   @db.Text
-  created_at         DateTime                  @default(now())
-  updated_at         DateTime                  @updatedAt
-  event              CalendarEvent             @relation(fields: [event_id], references: [id], onDelete: Cascade)
-  connection         GoogleCalendarConnection  @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+  last_error         String?                  @db.Text
+  created_at         DateTime                 @default(now())
+  updated_at         DateTime                 @updatedAt
+  event              CalendarEvent            @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  connection         GoogleCalendarConnection @relation(fields: [connection_id], references: [id], onDelete: Cascade)
 
   @@unique([event_id, connection_id])
   @@unique([connection_id, google_calendar_id, google_event_id])
@@ -733,7 +981,7 @@ model GoogleCalendarEventLink {
 // remote-event snapshot after an UpFlow event is deleted, so a temporary
 // Google outage cannot silently leave an orphaned calendar event behind.
 model GoogleCalendarSyncJob {
-  id                 String                       @id @default(uuid())
+  id                 String                      @id @default(uuid())
   workspace_id       String
   user_id            String
   connection_id      String
@@ -742,24 +990,24 @@ model GoogleCalendarSyncJob {
   // Manual syncs are queued too. This flag lets a user explicitly sync once
   // even while automatic event updates are paused, and preserves that intent
   // if Google is temporarily unavailable.
-  force              Boolean                      @default(false)
+  force              Boolean                     @default(false)
   google_calendar_id String?
   google_event_id    String?
   status             GoogleCalendarSyncJobStatus @default(pending)
-  attempt_count      Int                          @default(0)
-  next_attempt_at    DateTime                     @default(now())
+  attempt_count      Int                         @default(0)
+  next_attempt_at    DateTime                    @default(now())
   // A worker-specific lease prevents a stale in-flight worker from
   // overwriting a newer queued operation after it has been cancelled or
   // re-queued.
   lease_token        String?
   locked_until       DateTime?
-  last_error         String?                      @db.Text
+  last_error         String?                     @db.Text
   completed_at       DateTime?
-  created_at         DateTime                     @default(now())
-  updated_at         DateTime                     @updatedAt
-  workspace          Workspace                    @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  user               User                         @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  connection         GoogleCalendarConnection     @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+  created_at         DateTime                    @default(now())
+  updated_at         DateTime                    @updatedAt
+  workspace          Workspace                   @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  user               User                        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  connection         GoogleCalendarConnection    @relation(fields: [connection_id], references: [id], onDelete: Cascade)
   event              CalendarEvent?              @relation(fields: [event_id], references: [id], onDelete: SetNull)
 
   @@unique([event_id, connection_id, operation])
@@ -769,24 +1017,24 @@ model GoogleCalendarSyncJob {
 }
 
 model TimeEntry {
-  id               String          @id @default(uuid())
-  workspace_id     String
-  user_id          String
-  project_id       String?
-  task_id          String?
-  description      String?
-  started_at       DateTime
+  id                String          @id @default(uuid())
+  workspace_id      String
+  user_id           String
+  project_id        String?
+  task_id           String?
+  description       String?
+  started_at        DateTime
   active_started_at DateTime?
-  paused_at        DateTime?
-  stopped_at       DateTime?
-  duration_seconds Int             @default(0)
-  status           TimeEntryStatus @default(running)
-  created_at       DateTime        @default(now())
-  updated_at       DateTime        @updatedAt
-  workspace        Workspace       @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  user             User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  project          Project?        @relation(fields: [project_id], references: [id], onDelete: SetNull)
-  task             Task?           @relation(fields: [task_id], references: [id], onDelete: SetNull)
+  paused_at         DateTime?
+  stopped_at        DateTime?
+  duration_seconds  Int             @default(0)
+  status            TimeEntryStatus @default(running)
+  created_at        DateTime        @default(now())
+  updated_at        DateTime        @updatedAt
+  workspace         Workspace       @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  user              User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  project           Project?        @relation(fields: [project_id], references: [id], onDelete: SetNull)
+  task              Task?           @relation(fields: [task_id], references: [id], onDelete: SetNull)
 
   @@index([workspace_id, started_at])
   @@index([user_id, status])
@@ -821,52 +1069,52 @@ model ActivityEvent {
 }
 
 model Company {
-  id                String           @id @default(uuid())
-  workspace_id      String
-  name              String
-  description       String?
-  website           String?
-  status            String           @default("active")
-  commercial_status String?
-  contract_value    Float?
-  commission        Float?
-  industry          String?
-  sales_channel     ClientSalesChannel?
-  service_type      String?
-  plan_name         String?
-  billing_cycle     String?
-  included_services Json?
-  plan_notes        String?
-  notes             String?
-  legal_name        String?
-  cnpj              String?
-  billing_email     String?
-  main_contact_email String?
-  phone             String?
-  whatsapp          String?
-  address           String?
-  billing_notes     String?
-  payment_terms     String?
-  contract_start_date DateTime?
-  owner_id          String
-  created_at        DateTime         @default(now())
-  updated_at        DateTime         @updatedAt
-  workspace         Workspace        @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  owner             User             @relation("CompanyOwner", fields: [owner_id], references: [id], onDelete: Cascade)
-  projects          Project[]
-  tasks             Task[]
-  calendar_events   CalendarEvent[]
-  activity_events   ActivityEvent[]
-  contacts          CompanyContact[]
-  notes_log         CompanyNote[]
-  reports           ClientReport[]
-  client_onboardings ClientOnboarding[]
-  client_contracts  ClientContract[]
-  addresses         ClientAddress[]
+  id                             String                       @id @default(uuid())
+  workspace_id                   String
+  name                           String
+  description                    String?
+  website                        String?
+  status                         String                       @default("active")
+  commercial_status              String?
+  contract_value                 Float?
+  commission                     Float?
+  industry                       String?
+  sales_channel                  ClientSalesChannel?
+  service_type                   String?
+  plan_name                      String?
+  billing_cycle                  String?
+  included_services              Json?
+  plan_notes                     String?
+  notes                          String?
+  legal_name                     String?
+  cnpj                           String?
+  billing_email                  String?
+  main_contact_email             String?
+  phone                          String?
+  whatsapp                       String?
+  address                        String?
+  billing_notes                  String?
+  payment_terms                  String?
+  contract_start_date            DateTime?
+  owner_id                       String
+  created_at                     DateTime                     @default(now())
+  updated_at                     DateTime                     @updatedAt
+  workspace                      Workspace                    @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  owner                          User                         @relation("CompanyOwner", fields: [owner_id], references: [id], onDelete: Cascade)
+  projects                       Project[]
+  tasks                          Task[]
+  calendar_events                CalendarEvent[]
+  activity_events                ActivityEvent[]
+  contacts                       CompanyContact[]
+  notes_log                      CompanyNote[]
+  reports                        ClientReport[]
+  client_onboardings             ClientOnboarding[]
+  client_contracts               ClientContract[]
+  addresses                      ClientAddress[]
   marketing_b2b_onboarding_forms MarketingB2BOnboardingForm[]
   marketing_b2c_onboarding_forms MarketingB2COnboardingForm[]
-  sidebar_client_pins   SidebarClientPin[]
-  social_media_content_plans SocialMediaContentPlan[]
+  sidebar_client_pins            SidebarClientPin[]
+  social_media_content_plans     SocialMediaContentPlan[]
 
   @@index([workspace_id])
   @@index([workspace_id, status, updated_at])
@@ -876,7 +1124,7 @@ model Company {
 }
 
 model SocialMediaContentPlan {
-  id                       String    @id @default(uuid())
+  id                       String   @id @default(uuid())
   project_id               String
   company_id               String
   month                    DateTime
@@ -885,16 +1133,16 @@ model SocialMediaContentPlan {
   required_formats         Json?
   social_manager_id        String?
   designer_id              String?
-  moodboard_status         String    @default("Not Started")
-  moodboard_task_id        String?   @unique
-  created_at               DateTime  @default(now())
-  updated_at               DateTime  @updatedAt
-  project                  Project   @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  company                  Company   @relation(fields: [company_id], references: [id], onDelete: Cascade)
-  social_manager           User?     @relation("SocialMediaPlanManager", fields: [social_manager_id], references: [id], onDelete: SetNull)
-  designer                 User?     @relation("SocialMediaPlanDesigner", fields: [designer_id], references: [id], onDelete: SetNull)
-  moodboard_task           Task?     @relation("SocialMediaMoodboardTask", fields: [moodboard_task_id], references: [id], onDelete: SetNull)
-  content_tasks            Task[]    @relation("SocialMediaContentPlanTasks")
+  moodboard_status         String   @default("Not Started")
+  moodboard_task_id        String?  @unique
+  created_at               DateTime @default(now())
+  updated_at               DateTime @updatedAt
+  project                  Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  company                  Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  social_manager           User?    @relation("SocialMediaPlanManager", fields: [social_manager_id], references: [id], onDelete: SetNull)
+  designer                 User?    @relation("SocialMediaPlanDesigner", fields: [designer_id], references: [id], onDelete: SetNull)
+  moodboard_task           Task?    @relation("SocialMediaMoodboardTask", fields: [moodboard_task_id], references: [id], onDelete: SetNull)
+  content_tasks            Task[]   @relation("SocialMediaContentPlanTasks")
 
   @@unique([project_id, company_id, month])
   @@index([project_id, month])
@@ -904,70 +1152,70 @@ model SocialMediaContentPlan {
 }
 
 model ClientAddress {
-  id                   String   @id @default(uuid())
-  workspace_id          String
-  company_id            String
-  type                 String?
-  location_name        String?
-  full_address         String
-  zip_code             String?
-  city                 String?
-  state                String?
-  country              String?
-  maps_url             String?
-  local_contact_name   String?
-  local_contact_phone  String?
-  department_usage     Json?
-  is_primary           Boolean  @default(false)
-  notes                String?
-  created_at           DateTime @default(now())
-  updated_at           DateTime @updatedAt
-  workspace            Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  company              Company   @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  id                  String    @id @default(uuid())
+  workspace_id        String
+  company_id          String
+  type                String?
+  location_name       String?
+  full_address        String
+  zip_code            String?
+  city                String?
+  state               String?
+  country             String?
+  maps_url            String?
+  local_contact_name  String?
+  local_contact_phone String?
+  department_usage    Json?
+  is_primary          Boolean   @default(false)
+  notes               String?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  workspace           Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  company             Company   @relation(fields: [company_id], references: [id], onDelete: Cascade)
 
   @@index([workspace_id])
   @@index([company_id])
 }
 
 model ClientOnboarding {
-  id                         String    @id @default(uuid())
-  workspace_id               String
-  company_id                 String
-  project_id                 String?   @unique
-  status                     String    @default("pending_commercial_setup")
-  sequence_status            String    @default("commercial_pending")
-  progress                   Int       @default(0)
-  closing_date               DateTime?
-  expected_start_date        DateTime?
-  responsible_salesperson_id String?
-  initial_notes              String?
-  contracted_services        Json?
-  commercial_completed_at    DateTime?
-  technical_support_started_at DateTime?
-  up_zero_configuration_completed_at DateTime?
-  marketing_b2b_released_at  DateTime?
+  id                                       String                        @id @default(uuid())
+  workspace_id                             String
+  company_id                               String
+  project_id                               String?                       @unique
+  status                                   String                        @default("pending_commercial_setup")
+  sequence_status                          String                        @default("commercial_pending")
+  progress                                 Int                           @default(0)
+  closing_date                             DateTime?
+  expected_start_date                      DateTime?
+  responsible_salesperson_id               String?
+  initial_notes                            String?
+  contracted_services                      Json?
+  commercial_completed_at                  DateTime?
+  technical_support_started_at             DateTime?
+  up_zero_configuration_completed_at       DateTime?
+  marketing_b2b_released_at                DateTime?
   marketing_b2b_dependency_override_reason String?
-  marketing_b2b_dependency_overridden_by String?
-  marketing_b2b_dependency_overridden_at DateTime?
-  completed_at               DateTime?
-  completion_override_reason String?
-  completion_overridden_by   String?
-  completion_overridden_at   DateTime?
-  created_by                 String
-  created_at                 DateTime  @default(now())
-  updated_at                 DateTime  @updatedAt
-  workspace                  Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  company                    Company   @relation(fields: [company_id], references: [id], onDelete: Cascade)
-  project                    Project?  @relation(fields: [project_id], references: [id], onDelete: SetNull)
-  creator                    User      @relation("ClientOnboardingCreator", fields: [created_by], references: [id], onDelete: Cascade)
-  salesperson                User?     @relation("ClientOnboardingSalesperson", fields: [responsible_salesperson_id], references: [id], onDelete: SetNull)
-  checklist_items            OnboardingChecklistItem[]
-  service_assignments        OnboardingServiceAssignment[]
-  meetings                   OnboardingMeeting[]
-  contracts                  ClientContract[]
-  support_group              SupportGroup?
-  marketing_b2b_forms        MarketingB2BOnboardingForm[]
-  marketing_b2c_forms        MarketingB2COnboardingForm[]
+  marketing_b2b_dependency_overridden_by   String?
+  marketing_b2b_dependency_overridden_at   DateTime?
+  completed_at                             DateTime?
+  completion_override_reason               String?
+  completion_overridden_by                 String?
+  completion_overridden_at                 DateTime?
+  created_by                               String
+  created_at                               DateTime                      @default(now())
+  updated_at                               DateTime                      @updatedAt
+  workspace                                Workspace                     @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  company                                  Company                       @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  project                                  Project?                      @relation(fields: [project_id], references: [id], onDelete: SetNull)
+  creator                                  User                          @relation("ClientOnboardingCreator", fields: [created_by], references: [id], onDelete: Cascade)
+  salesperson                              User?                         @relation("ClientOnboardingSalesperson", fields: [responsible_salesperson_id], references: [id], onDelete: SetNull)
+  checklist_items                          OnboardingChecklistItem[]
+  service_assignments                      OnboardingServiceAssignment[]
+  meetings                                 OnboardingMeeting[]
+  contracts                                ClientContract[]
+  support_group                            SupportGroup?
+  marketing_b2b_forms                      MarketingB2BOnboardingForm[]
+  marketing_b2c_forms                      MarketingB2COnboardingForm[]
 
   @@index([workspace_id, status])
   @@index([workspace_id, sequence_status])
@@ -976,55 +1224,55 @@ model ClientOnboarding {
 }
 
 model OnboardingChecklistItem {
-  id             String    @id @default(uuid())
-  onboarding_id  String
-  workspace_id   String
-  task_id        String?
-  automation_key String?
-  department     String
-  title          String
-  status         String    @default("pending")
-  required       Boolean   @default(true)
-  owner_id       String?
-  due_date       DateTime?
-  completed_at   DateTime?
-  completed_by   String?
-  notes          String?
-  sort_order     Int       @default(0)
-  created_at     DateTime  @default(now())
-  updated_at     DateTime  @updatedAt
-  onboarding     ClientOnboarding @relation(fields: [onboarding_id], references: [id], onDelete: Cascade)
-  workspace      Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  task           Task?     @relation(fields: [task_id], references: [id], onDelete: SetNull)
-  owner          User?     @relation("OnboardingChecklistOwner", fields: [owner_id], references: [id], onDelete: SetNull)
-  completer      User?     @relation("OnboardingChecklistCompleter", fields: [completed_by], references: [id], onDelete: SetNull)
-  meetings       OnboardingMeeting[]
+  id                 String                      @id @default(uuid())
+  onboarding_id      String
+  workspace_id       String
+  task_id            String?
+  automation_key     String?
+  department         String
+  title              String
+  status             String                      @default("pending")
+  required           Boolean                     @default(true)
+  owner_id           String?
+  due_date           DateTime?
+  completed_at       DateTime?
+  completed_by       String?
+  notes              String?
+  sort_order         Int                         @default(0)
+  created_at         DateTime                    @default(now())
+  updated_at         DateTime                    @updatedAt
+  onboarding         ClientOnboarding            @relation(fields: [onboarding_id], references: [id], onDelete: Cascade)
+  workspace          Workspace                   @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  task               Task?                       @relation(fields: [task_id], references: [id], onDelete: SetNull)
+  owner              User?                       @relation("OnboardingChecklistOwner", fields: [owner_id], references: [id], onDelete: SetNull)
+  completer          User?                       @relation("OnboardingChecklistCompleter", fields: [completed_by], references: [id], onDelete: SetNull)
+  meetings           OnboardingMeeting[]
   marketing_b2b_form MarketingB2BOnboardingForm?
   marketing_b2c_form MarketingB2COnboardingForm?
 
+  @@unique([onboarding_id, automation_key])
   @@index([workspace_id])
   @@index([onboarding_id, sort_order])
-  @@unique([onboarding_id, automation_key])
   @@index([owner_id])
   @@index([task_id])
 }
 
 model OnboardingServiceAssignment {
-  id             String    @id @default(uuid())
-  onboarding_id  String
-  workspace_id   String
-  service        String
-  leader_id      String?
-  department_id  String?
+  id              String           @id @default(uuid())
+  onboarding_id   String
+  workspace_id    String
+  service         String
+  leader_id       String?
+  department_id   String?
   department_name String?
-  status         String    @default("pending")
-  notes          String?
-  created_at     DateTime  @default(now())
-  updated_at     DateTime  @updatedAt
-  onboarding     ClientOnboarding @relation(fields: [onboarding_id], references: [id], onDelete: Cascade)
-  workspace      Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  leader         User?     @relation("OnboardingServiceLeader", fields: [leader_id], references: [id], onDelete: SetNull)
-  department     Department? @relation(fields: [department_id], references: [id], onDelete: SetNull)
+  status          String           @default("pending")
+  notes           String?
+  created_at      DateTime         @default(now())
+  updated_at      DateTime         @updatedAt
+  onboarding      ClientOnboarding @relation(fields: [onboarding_id], references: [id], onDelete: Cascade)
+  workspace       Workspace        @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  leader          User?            @relation("OnboardingServiceLeader", fields: [leader_id], references: [id], onDelete: SetNull)
+  department      Department?      @relation(fields: [department_id], references: [id], onDelete: SetNull)
 
   @@unique([onboarding_id, service])
   @@index([workspace_id])
@@ -1033,22 +1281,22 @@ model OnboardingServiceAssignment {
 }
 
 model OnboardingMeeting {
-  id                String    @id @default(uuid())
+  id                String                   @id @default(uuid())
   onboarding_id     String
   workspace_id      String
   service           String
   checklist_item_id String?
-  scheduled         Boolean   @default(false)
+  scheduled         Boolean                  @default(false)
   scheduled_at      DateTime?
   meeting_url       String?
   leader_id         String?
   notes             String?
-  created_at        DateTime  @default(now())
-  updated_at        DateTime  @updatedAt
-  onboarding        ClientOnboarding @relation(fields: [onboarding_id], references: [id], onDelete: Cascade)
-  workspace         Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  created_at        DateTime                 @default(now())
+  updated_at        DateTime                 @updatedAt
+  onboarding        ClientOnboarding         @relation(fields: [onboarding_id], references: [id], onDelete: Cascade)
+  workspace         Workspace                @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
   checklist_item    OnboardingChecklistItem? @relation(fields: [checklist_item_id], references: [id], onDelete: SetNull)
-  leader            User?     @relation("OnboardingMeetingLeader", fields: [leader_id], references: [id], onDelete: SetNull)
+  leader            User?                    @relation("OnboardingMeetingLeader", fields: [leader_id], references: [id], onDelete: SetNull)
 
   @@unique([onboarding_id, service])
   @@index([workspace_id])
@@ -1057,7 +1305,7 @@ model OnboardingMeeting {
 }
 
 model ClientContract {
-  id             String    @id @default(uuid())
+  id             String           @id @default(uuid())
   onboarding_id  String
   workspace_id   String
   company_id     String
@@ -1067,16 +1315,16 @@ model ClientContract {
   storage_path   String
   mime_type      String?
   size_bytes     Int?
-  status         String    @default("uploaded")
-  visibility     String    @default("private")
+  status         String           @default("uploaded")
+  visibility     String           @default("private")
   uploaded_by    String
-  uploaded_at    DateTime  @default(now())
-  created_at     DateTime  @default(now())
+  uploaded_at    DateTime         @default(now())
+  created_at     DateTime         @default(now())
   onboarding     ClientOnboarding @relation(fields: [onboarding_id], references: [id], onDelete: Cascade)
-  workspace      Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  company        Company   @relation(fields: [company_id], references: [id], onDelete: Cascade)
-  project        Project?  @relation(fields: [project_id], references: [id], onDelete: SetNull)
-  uploader       User      @relation("ClientContractUploader", fields: [uploaded_by], references: [id], onDelete: Cascade)
+  workspace      Workspace        @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  company        Company          @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  project        Project?         @relation(fields: [project_id], references: [id], onDelete: SetNull)
+  uploader       User             @relation("ClientContractUploader", fields: [uploaded_by], references: [id], onDelete: Cascade)
 
   @@index([workspace_id])
   @@index([company_id])
@@ -1085,46 +1333,46 @@ model ClientContract {
 }
 
 model SupportGroup {
-  id                    String    @id @default(uuid())
-  onboarding_id         String    @unique
-  workspace_id          String
-  group_created         Boolean   @default(false)
-  group_name            String?
-  group_link            String?
-  main_client_contact   String?
+  id                     String           @id @default(uuid())
+  onboarding_id          String           @unique
+  workspace_id           String
+  group_created          Boolean          @default(false)
+  group_name             String?
+  group_link             String?
+  main_client_contact    String?
   commercial_responsible String?
-  account_responsible   String?
-  group_created_at      DateTime?
-  created_by            String?
-  internal_participants Json?
-  client_participants   Json?
-  status                String    @default("not_created")
-  notes                 String?
-  created_at            DateTime  @default(now())
-  updated_at            DateTime  @updatedAt
-  onboarding            ClientOnboarding @relation(fields: [onboarding_id], references: [id], onDelete: Cascade)
-  workspace             Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  creator               User?     @relation("SupportGroupCreator", fields: [created_by], references: [id], onDelete: SetNull)
+  account_responsible    String?
+  group_created_at       DateTime?
+  created_by             String?
+  internal_participants  Json?
+  client_participants    Json?
+  status                 String           @default("not_created")
+  notes                  String?
+  created_at             DateTime         @default(now())
+  updated_at             DateTime         @updatedAt
+  onboarding             ClientOnboarding @relation(fields: [onboarding_id], references: [id], onDelete: Cascade)
+  workspace              Workspace        @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  creator                User?            @relation("SupportGroupCreator", fields: [created_by], references: [id], onDelete: SetNull)
 
   @@index([workspace_id])
   @@index([created_by])
 }
 
 model ServiceLeaderMapping {
-  id            String    @id @default(uuid())
-  workspace_id  String
-  service       String
-  leader_id     String?
+  id               String                            @id @default(uuid())
+  workspace_id     String
+  service          String
+  leader_id        String?
   backup_leader_id String?
-  department_id String?
-  active        Boolean   @default(true)
-  created_at    DateTime  @default(now())
-  updated_at    DateTime  @updatedAt
-  workspace     Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  leader        User?     @relation("ServiceLeaderMappingLeader", fields: [leader_id], references: [id], onDelete: SetNull)
-  backup_leader User?     @relation("ServiceLeaderMappingBackupLeader", fields: [backup_leader_id], references: [id], onDelete: SetNull)
-  backup_owners ServiceLeaderMappingBackupOwner[]
-  department    Department? @relation(fields: [department_id], references: [id], onDelete: SetNull)
+  department_id    String?
+  active           Boolean                           @default(true)
+  created_at       DateTime                          @default(now())
+  updated_at       DateTime                          @updatedAt
+  workspace        Workspace                         @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  leader           User?                             @relation("ServiceLeaderMappingLeader", fields: [leader_id], references: [id], onDelete: SetNull)
+  backup_leader    User?                             @relation("ServiceLeaderMappingBackupLeader", fields: [backup_leader_id], references: [id], onDelete: SetNull)
+  backup_owners    ServiceLeaderMappingBackupOwner[]
+  department       Department?                       @relation(fields: [department_id], references: [id], onDelete: SetNull)
 
   @@unique([workspace_id, service])
   @@index([leader_id])
@@ -1145,26 +1393,26 @@ model ServiceLeaderMappingBackupOwner {
 }
 
 model MarketingB2BOnboardingForm {
-  id                String   @id @default(uuid())
+  id                String                  @id @default(uuid())
   workspace_id      String
   onboarding_id     String
-  checklist_item_id String   @unique
-  task_id           String   @unique
+  checklist_item_id String                  @unique
+  task_id           String                  @unique
   company_id        String
   project_id        String
   values            Json?
-  status            String   @default("draft")
+  status            String                  @default("draft")
   completed_at      DateTime?
   completed_by      String?
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
-  workspace         Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  onboarding        ClientOnboarding @relation(fields: [onboarding_id], references: [id], onDelete: Cascade)
+  created_at        DateTime                @default(now())
+  updated_at        DateTime                @updatedAt
+  workspace         Workspace               @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  onboarding        ClientOnboarding        @relation(fields: [onboarding_id], references: [id], onDelete: Cascade)
   checklist_item    OnboardingChecklistItem @relation(fields: [checklist_item_id], references: [id], onDelete: Cascade)
-  task              Task @relation(fields: [task_id], references: [id], onDelete: Cascade)
-  company           Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
-  project           Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  completer         User? @relation("MarketingB2BOnboardingFormCompleter", fields: [completed_by], references: [id], onDelete: SetNull)
+  task              Task                    @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  company           Company                 @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  project           Project                 @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  completer         User?                   @relation("MarketingB2BOnboardingFormCompleter", fields: [completed_by], references: [id], onDelete: SetNull)
 
   @@index([workspace_id])
   @@index([onboarding_id])
@@ -1175,26 +1423,26 @@ model MarketingB2BOnboardingForm {
 }
 
 model MarketingB2COnboardingForm {
-  id                String   @id @default(uuid())
+  id                String                  @id @default(uuid())
   workspace_id      String
   onboarding_id     String
-  checklist_item_id String   @unique
-  task_id           String   @unique
+  checklist_item_id String                  @unique
+  task_id           String                  @unique
   company_id        String
   project_id        String
   values            Json?
-  status            String   @default("draft")
+  status            String                  @default("draft")
   completed_at      DateTime?
   completed_by      String?
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
-  workspace         Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  onboarding        ClientOnboarding @relation(fields: [onboarding_id], references: [id], onDelete: Cascade)
+  created_at        DateTime                @default(now())
+  updated_at        DateTime                @updatedAt
+  workspace         Workspace               @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  onboarding        ClientOnboarding        @relation(fields: [onboarding_id], references: [id], onDelete: Cascade)
   checklist_item    OnboardingChecklistItem @relation(fields: [checklist_item_id], references: [id], onDelete: Cascade)
-  task              Task @relation(fields: [task_id], references: [id], onDelete: Cascade)
-  company           Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
-  project           Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  completer         User? @relation("MarketingB2COnboardingFormCompleter", fields: [completed_by], references: [id], onDelete: SetNull)
+  task              Task                    @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  company           Company                 @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  project           Project                 @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  completer         User?                   @relation("MarketingB2COnboardingFormCompleter", fields: [completed_by], references: [id], onDelete: SetNull)
 
   @@index([workspace_id])
   @@index([onboarding_id])
@@ -1499,20 +1747,20 @@ model Comment {
 }
 
 model Doc {
-  id                    String    @id @default(uuid())
-  title                 String
-  content               Json?
-  approval_status       String    @default("draft")
-  approval_stage        String    @default("draft")
-  approval_requested_at DateTime?
-  approval_approved_at  DateTime?
-  project_id            String
-  workspace_id          String
-  author_id             String
-  updated_at            DateTime  @updatedAt
-  workspace             Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  project               Project   @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  author                User      @relation(fields: [author_id], references: [id])
+  id                         String                    @id @default(uuid())
+  title                      String
+  content                    Json?
+  approval_status            String                    @default("draft")
+  approval_stage             String                    @default("draft")
+  approval_requested_at      DateTime?
+  approval_approved_at       DateTime?
+  project_id                 String
+  workspace_id               String
+  author_id                  String
+  updated_at                 DateTime                  @updatedAt
+  workspace                  Workspace                 @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  project                    Project                   @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  author                     User                      @relation(fields: [author_id], references: [id])
   calendar_event_attachments CalendarEventAttachment[]
 
   @@index([workspace_id])

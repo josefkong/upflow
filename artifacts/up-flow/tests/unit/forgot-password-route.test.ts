@@ -69,6 +69,8 @@ test("falls back to Supabase recovery email when custom token generation fails",
   const originalFetch = globalThis.fetch;
   const urls: string[] = [];
   configureRecoveryEnv();
+  process.env.RESEND_API_KEY = "resend-key";
+  process.env.EMAIL_FROM = "Up Flow <no-reply@app.example>";
 
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = requestUrl(input);
@@ -97,6 +99,43 @@ test("falls back to Supabase recovery email when custom token generation fails",
     assert.ok(
       urls.some((url) => url.includes("/auth/v1/recover")),
       "a custom-link failure must try Supabase's native recovery email",
+    );
+  } finally {
+    restoreEnv(env);
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("uses Supabase recovery directly when the custom email backend is not configured", async () => {
+  const env = snapshotEnv();
+  const originalFetch = globalThis.fetch;
+  const urls: string[] = [];
+  configureRecoveryEnv();
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = requestUrl(input);
+    urls.push(url);
+    if (url.includes("/auth/v1/recover")) {
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }) as typeof fetch;
+
+  try {
+    const { POST } = await importFreshForgotRoute();
+    const response = await POST(makeRequest("203.0.113.204"));
+
+    assert.equal(response.status, 202);
+    assert.ok(
+      !urls.some((url) => url.includes("/auth/v1/admin/generate_link")),
+      "an undeliverable custom email must not consume a recovery token",
+    );
+    assert.ok(
+      urls.some((url) => url.includes("/auth/v1/recover")),
+      "an unconfigured custom email backend must use native recovery",
     );
   } finally {
     restoreEnv(env);
@@ -192,6 +231,39 @@ test("reports a generic outage when neither reset-email provider accepts the req
     assert.equal(response.status, 503);
     const body = await response.json();
     assert.match(String(body.error), /temporarily unavailable/i);
+  } finally {
+    restoreEnv(env);
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("propagates the Supabase email rate limit to the forgot-password UI", async () => {
+  const env = snapshotEnv();
+  const originalFetch = globalThis.fetch;
+  configureRecoveryEnv();
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = requestUrl(input);
+    if (url.includes("/auth/v1/recover")) {
+      return new Response(
+        JSON.stringify({
+          code: "over_email_send_rate_limit",
+          message: "email rate limit exceeded",
+        }),
+        {
+          status: 429,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }) as typeof fetch;
+
+  try {
+    const { POST } = await importFreshForgotRoute();
+    const response = await POST(makeRequest("203.0.113.205"));
+
+    assert.equal(response.status, 429);
   } finally {
     restoreEnv(env);
     globalThis.fetch = originalFetch;

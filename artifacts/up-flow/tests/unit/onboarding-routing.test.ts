@@ -80,6 +80,37 @@ test("Commercial tasks in Contracts & Handoffs never open the Finance form", () 
   assert.equal(getOnboardingTaskAction(task), null);
 });
 
+test("Commercial Follow-up tasks always open their task panel", () => {
+  const task = {
+    id: "commercial-follow-up-task",
+    project_id: "follow-ups-project",
+    title: "Follow-up Comercial — Vionix",
+    description: "Faturamento mensal e reunião do Lead para acompanhamento.",
+    project: { id: "follow-ups-project", name: "Follow-ups" },
+    commercial_follow_up: { id: "commercial-lead" },
+  } as Task;
+
+  assert.equal(workflowFormKind(task), null);
+  assert.equal(getOnboardingTaskAction(task), null);
+});
+
+test("Contract handoff tasks always open their shared task panel", () => {
+  const task = {
+    id: "contract-handoff-task",
+    project_id: "commercial-contracts-project",
+    title: "Contrato e Handoff — Vionix",
+    description: "Solicitação compartilhada com o Financeiro.",
+    project: {
+      id: "commercial-contracts-project",
+      name: "Contracts & Handoffs",
+    },
+    commercial_contract_handoff: { id: "commercial-lead" },
+  } as Task;
+
+  assert.equal(workflowFormKind(task), null);
+  assert.equal(getOnboardingTaskAction(task), null);
+});
+
 test("legacy Marketing B2C form tasks remain discoverable before their form row is repaired", () => {
   const task = {
     id: "marketing-b2c-form-task",

@@ -62,7 +62,6 @@ test("members can contribute to project tasks while guests remain view-only else
   const goalsRoute = read("src/app/api/goals/route.ts");
   const uploadRoute = read("src/app/api/uploads/task-cover/route.ts");
   const sidebarPanel = read("src/components/layout/sidebar/panel.tsx");
-  const header = read("src/components/layout/header.tsx");
   const spacePage = read("src/app/(dashboard)/spaces/[id]/page.tsx");
   const spaceBrowser = read("src/components/spaces/space-browser.tsx");
 
@@ -92,16 +91,23 @@ test("members can contribute to project tasks while guests remain view-only else
   assert.match(calendarEventDetail, /role:\s*\{\s*not:\s*"guest"\s*\}/);
   assert.match(calendarEventDetail, /if \(!membership\) return false;/);
   assert.match(calendarEventDetail, /event\.created_by === auth\.prismaUser\.id[\s\S]*membership\.role === "owner"/);
-  assert.match(calendarRoute, /const canCreateLinkedSchedule = Boolean\(\s*canCreateWorkspaceEvent/s);
-  assert.match(projectsRoute, /member\?\.status === "active" && member\.role !== "guest"/);
+  assert.match(
+    calendarRoute,
+    /const canCreateLinkedSchedule = Boolean\([\s\S]*onboardingAccess\?\.canScheduleChecklistItem/,
+  );
+  assert.match(
+    calendarRoute,
+    /if \(!canCreateWorkspaceEvent && !canCreateLinkedSchedule\)/,
+  );
+  assert.match(projectsRoute, /!isWorkspaceAdminFor\(auth, auth\.currentWorkspaceId\)/);
+  assert.doesNotMatch(projectsRoute, /canCreateProjectInWorkspace/);
   assert.doesNotMatch(projectsRoute, /isCommercialDepartmentName/);
-  assert.match(projectDirectoryRoute, /member\?\.status === "active" && member\.role !== "guest"/);
+  assert.match(projectDirectoryRoute, /canCreateProject: canManageProjects/);
   assert.doesNotMatch(projectDirectoryRoute, /isCommercialDepartmentName/);
-  assert.match(projectDirectory, /currentRole === "member"/);
-  assert.match(commandPalette, /currentRole === "member"/);
+  assert.doesNotMatch(projectDirectory, /currentRole === "member"/);
+  assert.match(commandPalette, /const canCreateClient = canCreateProject \|\| user\?\.currentRole === "member"/);
 
   assert.match(sidebarPanel, /canManageWorkspace/);
-  assert.match(header, /currentRole === "member"/);
   assert.match(spacePage, /\{canManageWorkspace && \(\s*<>\s*<button\s+onClick=\{\(\) => setShowNewFolder\(true\)\}/s);
   assert.match(spacePage, /canManageStructure=\{canManageWorkspace\}/);
   assert.match(spaceBrowser, /canManageStructure: boolean;/);

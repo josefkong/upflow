@@ -13,6 +13,7 @@ import {
 import { logError } from "@/lib/log-error";
 import { TEST_AUTH_COOKIE, verifyTestAuthCookie } from "@/lib/test-auth";
 import { normalizeDisplayName } from "@/lib/user-profile";
+import { hasGoogleIdentityProvider } from "@/lib/google-auth";
 
 export interface AuthUser {
   supabaseId: string;
@@ -75,6 +76,12 @@ export async function getAuthResult(): Promise<AuthResult> {
       } = await supabase.auth.getUser();
       // No session = genuinely anonymous (login screen is correct).
       if (!user?.email) return { kind: "anonymous" };
+      // Password and recovery sessions may still exist for accounts created
+      // before the Google-only rollout. They are deliberately not valid
+      // UpFlow sessions anymore.
+      if (!hasGoogleIdentityProvider(user.app_metadata)) {
+        return { kind: "anonymous" };
+      }
       email = user.email;
       supabaseId = user.id;
       metadataName =

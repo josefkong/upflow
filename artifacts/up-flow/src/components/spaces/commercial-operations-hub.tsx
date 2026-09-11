@@ -98,7 +98,7 @@ export function CommercialOperationsHub({
   onCreateTask,
   onTaskStatusChange,
 }: CommercialOperationsHubProps) {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const tasks = data.tasks.items;
   const projects = data.projects.items;
   const command = data.command_center;
@@ -118,7 +118,7 @@ export function CommercialOperationsHub({
   const status = hasAttention
     ? t("commercialDashboard.needsAttention")
     : t("commercialDashboard.operational");
-  const stages = buildStages(projects, tasks);
+  const stages = buildStages(projects, tasks, t);
   const topProjects = [...projects]
     .sort((a, b) => {
       const valueDiff = projectValue(b) - projectValue(a);
@@ -189,7 +189,7 @@ export function CommercialOperationsHub({
                 className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(79,70,229,0.35)] transition hover:scale-[1.01] hover:shadow-[0_14px_36px_rgba(79,70,229,0.48)]"
               >
                 <Plus className="h-4 w-4" />
-                {t("commercialDashboard.newTask")}
+                {t("commercialLead.addLead")}
               </button>
             )}
           </div>
@@ -198,7 +198,7 @@ export function CommercialOperationsHub({
         <div className="relative mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-[repeat(5,minmax(0,1fr))]">
           <CommercialMetricCard
             title={t("commercialDashboard.pipelineValue")}
-            value={pipelineValue > 0 ? formatMoney(pipelineValue) : t("commercialDashboard.notSet")}
+            value={pipelineValue > 0 ? formatMoney(pipelineValue, language) : t("commercialDashboard.notSet")}
             detail={t("commercialDashboard.contractValueDetail")}
             tone="violet"
             icon={<DollarSign className="h-4 w-4" />}
@@ -233,7 +233,7 @@ export function CommercialOperationsHub({
           />
           <CommercialMetricCard
             title={t("commercialDashboard.avgProjectValue")}
-            value={avgDealSize > 0 ? formatMoney(avgDealSize) : t("commercialDashboard.notSet")}
+            value={avgDealSize > 0 ? formatMoney(avgDealSize, language) : t("commercialDashboard.notSet")}
             detail={t("commercialDashboard.valueDividedByProjects")}
             tone="cyan"
             icon={<Activity className="h-4 w-4" />}
@@ -288,7 +288,7 @@ export function CommercialOperationsHub({
                     <span className="font-medium text-foreground">{stage.name}</span>
                     <span className="text-right text-muted-foreground">{stage.count}</span>
                     <span className="text-right text-foreground dark:text-slate-300">
-                      {stage.value > 0 ? formatMoney(stage.value) : "-"}
+                      {stage.value > 0 ? formatMoney(stage.value, language) : "-"}
                     </span>
                   </div>
                 ))}
@@ -309,7 +309,7 @@ export function CommercialOperationsHub({
                       {t("commercialDashboard.contractValue")}
                     </p>
                     <p className="mt-2 text-3xl font-bold text-foreground dark:text-white">
-                      {pipelineValue > 0 ? formatMoney(pipelineValue) : t("commercialDashboard.notSet")}
+                      {pipelineValue > 0 ? formatMoney(pipelineValue, language) : t("commercialDashboard.notSet")}
                     </p>
                   </div>
                   <DollarSign className="h-8 w-8 text-violet-600 dark:text-violet-300" />
@@ -620,6 +620,7 @@ function ActivityList({
   emptyText: string;
   systemLabel: string;
 }) {
+  const { language } = useLanguage();
   if (items.length === 0) {
     return <EmptyPanelText>{emptyText}</EmptyPanelText>;
   }
@@ -633,7 +634,7 @@ function ActivityList({
               {item.actor?.name ?? systemLabel} {humanize(item.type)}
             </p>
             <p className="mt-1 truncate text-xs text-muted-foreground">
-              {humanize(item.entity_type)} - {formatRelative(item.created_at)}
+              {humanize(item.entity_type)} - {formatRelative(item.created_at, language)}
             </p>
           </div>
         </div>
@@ -659,6 +660,7 @@ function TaskList({
   projectLabel: string;
   noDueDateLabel: string;
 }) {
+  const { language } = useLanguage();
   if (tasks.length === 0) {
     return <EmptyPanelText>{emptyText}</EmptyPanelText>;
   }
@@ -682,7 +684,7 @@ function TaskList({
             <p className="truncate text-sm font-medium text-foreground">{task.title}</p>
             <p className="mt-1 truncate text-xs text-muted-foreground">
               {task.project?.name ?? projectLabel} -{" "}
-              {task.due_date ? formatDate(task.due_date) : noDueDateLabel}
+              {task.due_date ? formatDate(task.due_date, language) : noDueDateLabel}
             </p>
           </div>
           <span
@@ -713,6 +715,7 @@ function TopProjects({
   tasksLabel: (count: number) => string;
   noValueLabel: string;
 }) {
+  const { language } = useLanguage();
   if (projects.length === 0) {
     return <EmptyPanelText>{emptyText}</EmptyPanelText>;
   }
@@ -738,7 +741,7 @@ function TopProjects({
             </div>
             <div className="text-right">
               <p className="text-sm font-bold text-foreground">
-                {value > 0 ? formatMoney(value) : noValueLabel}
+                {value > 0 ? formatMoney(value, language) : noValueLabel}
               </p>
               <p className="text-xs text-muted-foreground">{project.status}</p>
             </div>
@@ -856,33 +859,37 @@ function AvatarLabel({ label }: { label: string }) {
   );
 }
 
-function buildStages(projects: Project[], tasks: Task[]) {
+function buildStages(
+  projects: Project[],
+  tasks: Task[],
+  t: (key: string, vars?: Record<string, string | number>) => string,
+) {
   const definitions: Array<{
     name: string;
     status: TaskStatus;
     keywords: string[];
     fallback: Task[];
   }> = [
-    { name: "Leads", status: "todo", keywords: ["lead"], fallback: tasks.filter((task) => task.status === "todo") },
+    { name: t("commercialDashboard.stageLeads"), status: "todo", keywords: ["lead"], fallback: tasks.filter((task) => task.status === "todo") },
     {
-      name: "Proposals",
+      name: t("commercialDashboard.stageProposals"),
       status: "todo",
       keywords: ["proposal", "proposta"],
       fallback: tasks.filter((task) => task.priority === "high" && task.status !== "done"),
     },
     {
-      name: "Follow-ups",
+      name: t("commercialDashboard.stageFollowUps"),
       status: "in_progress",
       keywords: ["follow", "follow-up", "retorno"],
       fallback: tasks.filter((task) => task.status === "in_progress"),
     },
     {
-      name: "Contracts",
+      name: t("commercialDashboard.stageContracts"),
       status: "in_progress",
       keywords: ["contract", "contrato"],
       fallback: tasks.filter((task) => task.status !== "done" && task.due_date),
     },
-    { name: "Won", status: "done", keywords: ["won", "closed", "fechado"], fallback: tasks.filter((task) => task.status === "done") },
+    { name: t("commercialDashboard.stageWon"), status: "done", keywords: ["won", "closed", "fechado"], fallback: tasks.filter((task) => task.status === "done") },
   ];
 
   return definitions.map((definition) => {
@@ -926,8 +933,8 @@ function isOverdue(value: string | null) {
   return date.getTime() < today.getTime();
 }
 
-function formatMoney(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
+function formatMoney(value: number, language: "en" | "pt-BR") {
+  return new Intl.NumberFormat(language, {
     style: "currency",
     currency: "BRL",
     notation: value >= 100000 ? "compact" : "standard",
@@ -935,11 +942,11 @@ function formatMoney(value: number) {
   }).format(value);
 }
 
-function formatRelative(value: string) {
+function formatRelative(value: string, language: "en" | "pt-BR") {
   const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60000));
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1) return language === "pt-BR" ? "Agora" : "Just now";
+  if (minutes < 60) return language === "pt-BR" ? `${minutes} min atrás` : `${minutes}m ago`;
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return formatDateTime(value);
+  if (hours < 24) return language === "pt-BR" ? `${hours}h atrás` : `${hours}h ago`;
+  return formatDateTime(value, language);
 }

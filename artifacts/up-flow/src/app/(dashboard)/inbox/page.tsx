@@ -17,13 +17,14 @@ import {
   AtSign,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
-import { memberJoinedNotificationLabel } from "@/lib/notification-copy";
+import { equipmentNotificationLabel, memberJoinedNotificationLabel } from "@/lib/notification-copy";
 import { getNotificationHref } from "@/lib/notification-links";
 import {
   readNotificationPreferences,
   writeNotificationPreferences,
   type NotificationPreferences,
 } from "@/lib/notification-preferences";
+import { publishInboxPendingCount } from "@/lib/inbox-pending-count";
 import type { Notification } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -37,7 +38,10 @@ type Filter =
   | "member_joined"
   | "status_changed"
   | "mentioned";
-type Translate = (key: string, vars?: Record<string, string | number>) => string;
+type Translate = (
+  key: string,
+  vars?: Record<string, string | number>,
+) => string;
 
 const SNOOZED_NOTIFICATIONS_KEY = "upflow:snoozed-notifications";
 const SNOOZE_MS = 60 * 60 * 1000;
@@ -54,18 +58,24 @@ const STATUS_KEY: Record<string, string> = {
 };
 
 function iconFor(type: string) {
-  if (type === "assigned") return <UserCheck className="w-4 h-4 text-primary" />;
+  if (type === "assigned")
+    return <UserCheck className="w-4 h-4 text-primary" />;
   if (type === "commented")
     return <MessageSquare className="w-4 h-4 text-upflow-success" />;
   if (type === "member_joined")
     return <UserPlus className="w-4 h-4 text-primary" />;
   if (type === "status_changed")
     return <ArrowRightCircle className="w-4 h-4 text-primary" />;
-  if (type === "mentioned") return <AtSign className="w-4 h-4 text-upflow-success" />;
+  if (type === "mentioned")
+    return <AtSign className="w-4 h-4 text-upflow-success" />;
   return <Clock className="w-4 h-4 text-upflow-warning" />;
 }
 
-function labelFor(n: Notification, language: "en" | "pt" | "pt-BR", t: Translate) {
+function labelFor(
+  n: Notification,
+  language: "en" | "pt" | "pt-BR",
+  t: Translate,
+) {
   if (n.type === "member_joined") {
     return memberJoinedNotificationLabel(n, language);
   }
@@ -75,8 +85,21 @@ function labelFor(n: Notification, language: "en" | "pt" | "pt-BR", t: Translate
     actor_name?: string;
     task_title?: string;
     source?: string;
+    collaborator_name?: string;
+    space_name?: string;
   };
   const taskTitle = n.task?.title || data.task_title || t("inbox.aTask");
+  const equipmentLabel = equipmentNotificationLabel(n, language);
+  if (equipmentLabel) return equipmentLabel;
+  if (data.source === "space_share_request") {
+    const actor = data.actor_name || t("inbox.someone");
+    const collaborator =
+      data.collaborator_name || (language === "en" ? "a collaborator" : "um colaborador");
+    const space = data.space_name || (language === "en" ? "a space" : "um espaço");
+    return language === "en"
+      ? `${actor} requested access to ${space} for ${collaborator}`
+      : `${actor} solicitou acesso ao espaço ${space} para ${collaborator}`;
+  }
   if (data.source === "social_media_moodboard_ready") {
     return language === "en"
       ? `Social Media moodboard ready: "${taskTitle}" can move into creative production`
@@ -87,13 +110,28 @@ function labelFor(n: Notification, language: "en" | "pt" | "pt-BR", t: Translate
       ? `Social Media post overdue: "${taskTitle}" needs attention`
       : `Post de Social Media atrasado: "${taskTitle}" precisa de atencao`;
   }
-  if (n.type === "assigned") return t("inbox.notification.assigned", { task: taskTitle });
-  if (n.type === "commented") return t("inbox.notification.commented", { task: taskTitle });
-  if (n.type === "due_soon") return t("inbox.notification.dueSoon", { task: taskTitle });
+  if (data.source === "task_follower_added") {
+    const actor = data.actor_name || t("inbox.someone");
+    return language === "en"
+      ? `${actor} added you as a follower of "${taskTitle}"`
+      : `${actor} adicionou você ao acompanhamento de "${taskTitle}"`;
+  }
+  if (n.type === "assigned")
+    return t("inbox.notification.assigned", { task: taskTitle });
+  if (n.type === "commented")
+    return t("inbox.notification.commented", { task: taskTitle });
+  if (n.type === "due_soon")
+    return t("inbox.notification.dueSoon", { task: taskTitle });
   if (n.type === "status_changed") {
     const actor = data.actor_name || t("inbox.someone");
-    const newLabel = data.new_status ? t(STATUS_KEY[data.new_status] ?? data.new_status) : t("inbox.newStatus");
-    return t("inbox.notification.statusChanged", { actor, task: taskTitle, status: newLabel });
+    const newLabel = data.new_status
+      ? t(STATUS_KEY[data.new_status] ?? data.new_status)
+      : t("inbox.newStatus");
+    return t("inbox.notification.statusChanged", {
+      actor,
+      task: taskTitle,
+      status: newLabel,
+    });
   }
   if (n.type === "mentioned") {
     const data = (n.data ?? {}) as { actor_name?: string };
@@ -125,7 +163,9 @@ function readSnoozedNotifications() {
     const parsed = JSON.parse(raw) as Record<string, number>;
     const now = Date.now();
     return Object.fromEntries(
-      Object.entries(parsed).filter(([, until]) => typeof until === "number" && until > now),
+      Object.entries(parsed).filter(
+        ([, until]) => typeof until === "number" && until > now,
+      ),
     );
   } catch {
     return {};
@@ -146,7 +186,9 @@ export default function InboxPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [snoozedUntil, setSnoozedUntil] = useState<Record<string, number>>({});
   const [notificationPreferences, setNotificationPreferences] =
-    useState<NotificationPreferences>(() => readNotificationPreferences(user?.id));
+    useState<NotificationPreferences>(() =>
+      readNotificationPreferences(user?.id),
+    );
 
   const load = useCallback(async () => {
     try {
@@ -179,27 +221,40 @@ export default function InboxPage() {
   const counts = useMemo(() => {
     return {
       all: activeNotifications.length,
-      action_needed: activeNotifications.filter((n) => ACTION_NEEDED_TYPES.has(n.type)).length,
+      action_needed: activeNotifications.filter((n) =>
+        ACTION_NEEDED_TYPES.has(n.type),
+      ).length,
       unread: activeNotifications.filter((n) => !n.read).length,
       assigned: activeNotifications.filter((n) => n.type === "assigned").length,
-      commented: activeNotifications.filter((n) => n.type === "commented").length,
+      commented: activeNotifications.filter((n) => n.type === "commented")
+        .length,
       due_soon: activeNotifications.filter((n) => n.type === "due_soon").length,
-      member_joined: activeNotifications.filter((n) => n.type === "member_joined").length,
-      status_changed: activeNotifications.filter((n) => n.type === "status_changed").length,
-      mentioned: activeNotifications.filter((n) => n.type === "mentioned").length,
+      member_joined: activeNotifications.filter(
+        (n) => n.type === "member_joined",
+      ).length,
+      status_changed: activeNotifications.filter(
+        (n) => n.type === "status_changed",
+      ).length,
+      mentioned: activeNotifications.filter((n) => n.type === "mentioned")
+        .length,
     };
   }, [activeNotifications]);
 
+  useEffect(() => {
+    publishInboxPendingCount(user?.id, counts.action_needed);
+  }, [counts.action_needed, user?.id]);
+
   const visible = useMemo(() => {
     if (filter === "all") return activeNotifications;
-    if (filter === "action_needed") return activeNotifications.filter((n) => ACTION_NEEDED_TYPES.has(n.type));
+    if (filter === "action_needed")
+      return activeNotifications.filter((n) => ACTION_NEEDED_TYPES.has(n.type));
     if (filter === "unread") return activeNotifications.filter((n) => !n.read);
     return activeNotifications.filter((n) => n.type === filter);
   }, [activeNotifications, filter]);
 
   const markRead = async (id: string) => {
     setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
     );
     await fetch(`/api/notifications/${id}`, {
       method: "PATCH",
@@ -218,14 +273,17 @@ export default function InboxPage() {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ read: true }),
-        })
-      )
+        }),
+      ),
     );
     toast.success(t("inbox.markedRead", { count: unread.length }));
   };
 
   const snoozeNotification = (id: string) => {
-    const next = { ...readSnoozedNotifications(), [id]: Date.now() + SNOOZE_MS };
+    const next = {
+      ...readSnoozedNotifications(),
+      [id]: Date.now() + SNOOZE_MS,
+    };
     writeSnoozedNotifications(next);
     setSnoozedUntil(next);
     toast.success(t("inbox.snoozedForOneHour"));
@@ -274,14 +332,14 @@ export default function InboxPage() {
                     "px-3 py-1.5 rounded-full text-xs font-medium transition-colors flex items-center gap-1.5",
                     active
                       ? "bg-primary text-primary-foreground"
-                      : "bg-white/5 text-muted-foreground hover:text-foreground hover:bg-white/10"
+                      : "bg-white/5 text-muted-foreground hover:text-foreground hover:bg-white/10",
                   )}
                 >
                   {t(tab.labelKey)}
                   <span
                     className={cn(
                       "tabular-nums text-[10px] px-1.5 rounded-full",
-                      active ? "bg-white/20" : "bg-white/10"
+                      active ? "bg-white/20" : "bg-white/10",
                     )}
                   >
                     {count}
@@ -341,10 +399,12 @@ export default function InboxPage() {
                     className={cn(
                       "flex items-start gap-3 px-5 py-4 transition-colors",
                       !n.read && "bg-primary/5",
-                      notificationHref && "hover:bg-white/5 cursor-pointer"
+                      notificationHref && "hover:bg-white/5 cursor-pointer",
                     )}
                   >
-                    <div className="mt-0.5 flex-shrink-0">{iconFor(n.type)}</div>
+                    <div className="mt-0.5 flex-shrink-0">
+                      {iconFor(n.type)}
+                    </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-foreground leading-snug">
                         {labelFor(n, language, t)}
@@ -352,7 +412,9 @@ export default function InboxPage() {
                       <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                         {n.task?.project?.name ? (
                           <>
-                            <span className="truncate">{n.task.project.name}</span>
+                            <span className="truncate">
+                              {n.task.project.name}
+                            </span>
                             <span>·</span>
                           </>
                         ) : n.type === "member_joined" && n.workspace?.name ? (
@@ -407,7 +469,10 @@ export default function InboxPage() {
                 return (
                   <li key={n.id}>
                     {notificationHref ? (
-                      <Link href={notificationHref} onClick={() => !n.read && markRead(n.id)}>
+                      <Link
+                        href={notificationHref}
+                        onClick={() => !n.read && markRead(n.id)}
+                      >
                         {Row}
                       </Link>
                     ) : (

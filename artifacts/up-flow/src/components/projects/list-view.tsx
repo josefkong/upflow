@@ -13,13 +13,15 @@ import { cn, formatDate, getInitials, isOverdue } from "@/lib/utils";
 import { useLanguage } from "@/components/language-provider";
 import CustomFieldInput from "@/components/projects/custom-field-input";
 import BrazilianDateInput from "@/components/ui/brazilian-date-input";
-import { priorityToneClass, TASK_PRIORITIES } from "@/components/projects/priority-ui";
+import {
+  priorityToneClass,
+  TASK_PRIORITIES,
+} from "@/components/projects/priority-ui";
+import type { CustomFieldDefinition, Task, TaskAssignee } from "@/lib/types";
 import type {
-  CustomFieldDefinition,
-  Task,
-  TaskAssignee,
-} from "@/lib/types";
-import type { GroupBy, ToolbarState } from "@/components/projects/project-toolbar";
+  GroupBy,
+  ToolbarState,
+} from "@/components/projects/project-toolbar";
 
 interface Props {
   projectId: string;
@@ -29,7 +31,9 @@ interface Props {
   toolbar: ToolbarState;
   onTaskClick: (task: Task) => void;
   onAddTask: (groupKey?: string) => void;
+  addItemLabel?: string;
   canCreate: boolean;
+  canAddTasks?: boolean;
   /**
    * Explicit project contribution capability. `canCreate` is retained for
    * callers that only know whether task work is available, but an explicit
@@ -61,7 +65,9 @@ export default function ListView({
   toolbar,
   onTaskClick,
   onAddTask,
+  addItemLabel,
   canCreate,
+  canAddTasks = canCreate,
   canContribute,
   onUpdate,
   selectedTaskIds,
@@ -109,10 +115,15 @@ export default function ListView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
-      if (!res.ok) throw new Error(await readTaskApiError(res, t("common.failedToUpdate")));
+      if (!res.ok)
+        throw new Error(
+          await readTaskApiError(res, t("common.failedToUpdate")),
+        );
       onUpdate();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("common.failedToUpdate"));
+      toast.error(
+        err instanceof Error ? err.message : t("common.failedToUpdate"),
+      );
     }
   };
 
@@ -137,7 +148,9 @@ export default function ListView({
             <div className="flex items-center gap-2 px-2 py-1.5 bg-muted/40 sticky top-[30px] z-10">
               <button
                 type="button"
-                onClick={() => setCollapsed((p) => ({ ...p, [g.key]: !p[g.key] }))}
+                onClick={() =>
+                  setCollapsed((p) => ({ ...p, [g.key]: !p[g.key] }))
+                }
                 aria-label={`${isCollapsed ? t("common.expand") : t("common.collapse")} ${g.label}`}
                 aria-expanded={!isCollapsed}
                 className="text-muted-foreground hover:text-foreground p-0.5"
@@ -156,13 +169,16 @@ export default function ListView({
               >
                 {g.label}
               </span>
-              <span className="text-xs text-muted-foreground">{g.tasks.length}</span>
-              {canMutateTasks && (
+              <span className="text-xs text-muted-foreground">
+                {g.tasks.length}
+              </span>
+              {canMutateTasks && canAddTasks && (
                 <button
                   onClick={() => onAddTask(g.key)}
                   className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-0.5 rounded hover:bg-muted"
                 >
-                  <Plus className="w-3 h-3" /> {t("projects.addTask")}
+                  <Plus className="w-3 h-3" />{" "}
+                  {addItemLabel ?? t("projects.addTask")}
                 </button>
               )}
             </div>
@@ -171,7 +187,10 @@ export default function ListView({
               <div>
                 {g.tasks.map((task) => {
                   const valueMap = new Map(
-                    (task.custom_field_values ?? []).map((v) => [v.definition_id, v.value]),
+                    (task.custom_field_values ?? []).map((v) => [
+                      v.definition_id,
+                      v.value,
+                    ]),
                   );
                   const isSelected = selectedTaskIds?.has(task.id) ?? false;
                   return (
@@ -179,7 +198,8 @@ export default function ListView({
                       key={task.id}
                       className={cn(
                         "grid items-center border-t border-border/60 px-3 py-1.5 hover:bg-muted/30 group",
-                        isSelected && "bg-blue-500/10 ring-1 ring-inset ring-blue-400/60",
+                        isSelected &&
+                          "bg-blue-500/10 ring-1 ring-inset ring-blue-400/60",
                       )}
                       style={{ gridTemplateColumns: cols.gridTemplate }}
                     >
@@ -189,41 +209,43 @@ export default function ListView({
                           isSelected ? "bg-primary/10" : "bg-card",
                         )}
                         onClick={() => {
-                          if (selectionMode && onToggleTaskSelection && canMutateTasks) {
+                          if (
+                            selectionMode &&
+                            onToggleTaskSelection &&
+                            canMutateTasks
+                          ) {
                             onToggleTaskSelection(task.id);
                             return;
                           }
                           onTaskClick(task);
                         }}
                       >
-                        {selectionMode && onToggleTaskSelection && canMutateTasks && (
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => onToggleTaskSelection(task.id)}
-                            onClick={(e) => e.stopPropagation()}
-                            aria-label={t("task.selectTask", { title: task.title })}
-                            className="h-4 w-4 flex-shrink-0 rounded border-border bg-background text-blue-500 focus:ring-2 focus:ring-blue-400"
-                          />
-                        )}
+                        {selectionMode &&
+                          onToggleTaskSelection &&
+                          canMutateTasks && (
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => onToggleTaskSelection(task.id)}
+                              onClick={(e) => e.stopPropagation()}
+                              aria-label={t("task.selectTask", {
+                                title: task.title,
+                              })}
+                              className="h-4 w-4 flex-shrink-0 rounded border-border bg-background text-blue-500 focus:ring-2 focus:ring-blue-400"
+                            />
+                          )}
                         {!selectionMode && (
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (!canMutateTasks) return;
-                              updateTask(task.id, {
-                                status: task.status === "done" ? "todo" : "done",
-                              });
-                            }}
-                            disabled={!canMutateTasks}
+                            onClick={(e) => e.stopPropagation()}
+                            disabled
                             className={cn(
-                              "w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center",
+                              "flex h-4 w-4 flex-shrink-0 cursor-not-allowed items-center justify-center rounded-full border-2 opacity-70",
                               task.status === "done"
                                 ? "bg-upflow-success border-upflow-success"
-                                : "border-border hover:border-primary",
-                              !canMutateTasks && "cursor-not-allowed opacity-60",
+                                : "border-border",
                             )}
-                            title={t("dashboard.completed")}
+                            title={t("task.automaticMovementOnly")}
+                            aria-label={t("task.automaticMovementOnly")}
                           >
                             {task.status === "done" && (
                               <span className="text-[8px] text-white">✓</span>
@@ -233,7 +255,8 @@ export default function ListView({
                         <span
                           className={cn(
                             "min-w-0 truncate text-sm text-foreground",
-                            task.status === "done" && "line-through text-muted-foreground",
+                            task.status === "done" &&
+                              "line-through text-muted-foreground",
                           )}
                         >
                           {task.title}
@@ -243,12 +266,17 @@ export default function ListView({
                         )}
                         {(task._count?.subtasks ?? 0) > 0 && (
                           <span className="text-[10px] text-muted-foreground">
-                            {t("task.subtasksCount", { count: task._count?.subtasks ?? 0 })}
+                            {t("task.subtasksCount", {
+                              count: task._count?.subtasks ?? 0,
+                            })}
                           </span>
                         )}
                       </div>
                       {cols.cols.map((c) => (
-                        <div key={c.key} className="px-2 min-w-0 text-xs text-muted-foreground">
+                        <div
+                          key={c.key}
+                          className="px-2 min-w-0 text-xs text-muted-foreground"
+                        >
                           {c.kind === "standard" ? (
                             renderStandardCell(
                               c.key,
@@ -271,7 +299,9 @@ export default function ListView({
                                 definition={c.field!}
                                 value={valueMap.get(c.field!.id)}
                                 users={users}
-                                onChange={(v) => updateField(task.id, c.field!.id, v)}
+                                onChange={(v) =>
+                                  updateField(task.id, c.field!.id, v)
+                                }
                                 compact
                               />
                             </fieldset>
@@ -281,12 +311,13 @@ export default function ListView({
                     </div>
                   );
                 })}
-                {canMutateTasks && (
+                {canMutateTasks && canAddTasks && (
                   <button
                     onClick={() => onAddTask(g.key)}
                     className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-5 py-2 w-full text-left border-t border-border/60"
                   >
-                    <Plus className="w-3 h-3" /> {t("projects.addTask")}
+                    <Plus className="w-3 h-3" />{" "}
+                    {addItemLabel ?? t("projects.addTask")}
                   </button>
                 )}
               </div>
@@ -316,7 +347,9 @@ function renderStandardCell(
     return (
       <select
         value={t.assignee?.id ?? ""}
-        onChange={(e) => updateTask(t.id, { assignee_id: e.target.value || null })}
+        onChange={(e) =>
+          updateTask(t.id, { assignee_id: e.target.value || null })
+        }
         onClick={(e) => e.stopPropagation()}
         disabled={!canMutateTasks}
         className={cn(
@@ -345,7 +378,9 @@ function renderStandardCell(
           disabled={!canMutateTasks}
           className={cn(
             "w-[82px] max-w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs hover:border-border focus:outline-none focus:ring-2 focus:ring-ring",
-            isOverdue(t.due_date) && t.status !== "done" && "text-upflow-danger",
+            isOverdue(t.due_date) &&
+              t.status !== "done" &&
+              "text-upflow-danger",
             !canMutateTasks && "cursor-not-allowed opacity-70",
           )}
         />
@@ -378,12 +413,13 @@ function renderStandardCell(
     return (
       <select
         value={t.status}
-        onChange={(e) => updateTask(t.id, { status: e.target.value })}
+        onChange={() => {}}
         onClick={(e) => e.stopPropagation()}
-        disabled={!canMutateTasks}
+        disabled
+        title={translate("task.automaticMovementOnly")}
         className={cn(
           "bg-transparent text-xs text-foreground hover:bg-muted/50 px-1.5 py-0.5 rounded border border-transparent hover:border-border focus:outline-none focus:ring-2 focus:ring-ring",
-          !canMutateTasks && "cursor-not-allowed opacity-70",
+          "cursor-not-allowed opacity-70",
         )}
       >
         {Object.entries(STATUS_META).map(([k]) => (
@@ -411,10 +447,30 @@ function buildColumns(
   t: (key: string, vars?: Record<string, string | number>) => string,
 ): { cols: BuiltCol[]; gridTemplate: string } {
   const standards: BuiltCol[] = [
-    { key: "assignee", label: t("toolbar.assignee"), kind: "standard", width: "minmax(140px, 0.8fr)" },
-    { key: "due_date", label: t("toolbar.dueDate"), kind: "standard", width: "minmax(140px, 0.8fr)" },
-    { key: "priority", label: t("toolbar.priority"), kind: "standard", width: "minmax(130px, 0.7fr)" },
-    { key: "status", label: t("toolbar.status"), kind: "standard", width: "minmax(120px, 0.6fr)" },
+    {
+      key: "assignee",
+      label: t("toolbar.assignee"),
+      kind: "standard",
+      width: "minmax(140px, 0.8fr)",
+    },
+    {
+      key: "due_date",
+      label: t("toolbar.dueDate"),
+      kind: "standard",
+      width: "minmax(140px, 0.8fr)",
+    },
+    {
+      key: "priority",
+      label: t("toolbar.priority"),
+      kind: "standard",
+      width: "minmax(130px, 0.7fr)",
+    },
+    {
+      key: "status",
+      label: t("toolbar.status"),
+      kind: "standard",
+      width: "minmax(120px, 0.6fr)",
+    },
   ];
   const customs: BuiltCol[] = customFields.map((f) => ({
     key: f.id,
@@ -424,7 +480,9 @@ function buildColumns(
     field: f,
   }));
   const all = [...standards, ...customs].filter((c) => visible[c.key] ?? true);
-  const gridTemplate = ["minmax(280px, 2fr)", ...all.map((c) => c.width)].join(" ");
+  const gridTemplate = ["minmax(280px, 2fr)", ...all.map((c) => c.width)].join(
+    " ",
+  );
   return { cols: all, gridTemplate };
 }
 
@@ -461,9 +519,13 @@ function groupTasks(
     if (toolbar.filterAssignee === "unassigned") {
       filtered = filtered.filter((t) => !t.assignee);
     } else if (allowed.has(toolbar.filterAssignee)) {
-      filtered = filtered.filter((t) => t.assignee?.id === toolbar.filterAssignee);
+      filtered = filtered.filter(
+        (t) => t.assignee?.id === toolbar.filterAssignee,
+      );
     } else {
-      filtered = filtered.filter((t) => t.assignee?.id === toolbar.filterAssignee);
+      filtered = filtered.filter(
+        (t) => t.assignee?.id === toolbar.filterAssignee,
+      );
     }
   }
 
@@ -520,7 +582,9 @@ function groupTasks(
     });
   }
 
-  return buckets.filter((b) => b.tasks.length > 0 || toolbar.groupBy === "status");
+  return buckets.filter(
+    (b) => b.tasks.length > 0 || toolbar.groupBy === "status",
+  );
 }
 
 function pillFor(kind: "status" | "priority", key: string) {

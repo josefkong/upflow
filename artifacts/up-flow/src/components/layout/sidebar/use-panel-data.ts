@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { logError } from "@/lib/log-error";
+import { ApiResponseError, recoverExpiredSession } from "@/lib/client-auth-recovery";
 import type { Project, Space, Folder as FolderT, SidebarHiddenSpace, SidebarPinnedClient } from "@/lib/types";
 import {
   getSidebarStorageKeys,
@@ -36,7 +37,9 @@ function fetchPanelData(scope: string, force = false, query = ""): Promise<Panel
   const normalizedQuery = query.trim();
   if (normalizedQuery) {
     return fetch(`${NAVIGATION_ENDPOINT}?q=${encodeURIComponent(normalizedQuery)}&limit=500`).then((r) => {
-      if (!r.ok) throw new Error(`Sidebar search failed: ${r.status}`);
+      if (!r.ok) {
+        throw new ApiResponseError(`Sidebar search failed: ${r.status}`, r.status);
+      }
       return r.json() as Promise<PanelPayload>;
     });
   }
@@ -51,7 +54,9 @@ function fetchPanelData(scope: string, force = false, query = ""): Promise<Panel
 
   const request = fetch(NAVIGATION_ENDPOINT)
     .then((r) => {
-      if (!r.ok) throw new Error(`Sidebar load failed: ${r.status}`);
+      if (!r.ok) {
+        throw new ApiResponseError(`Sidebar load failed: ${r.status}`, r.status);
+      }
       return r.json() as Promise<PanelPayload>;
     })
     .then((data) => {
@@ -224,6 +229,7 @@ export function usePanelData(
         })
         .catch((err) => {
           if (!enabledRef.current || requestId !== loadRequestId.current) return;
+          if (recoverExpiredSession(err)) return;
           setPanelLoadFailed(true);
           logError("sidebar:loadPanel", err);
         })
@@ -377,6 +383,37 @@ export function usePanelData(
     [storageKeys.scope],
   );
 
+  const reorderSpaces = useCallback(
+    (orderedIds: string[]) => {
+      setSpaces((current) => {
+        const byId = new Map(current.map((space) => [space.id, space]));
+        const ordered = orderedIds
+          .map((id) => byId.get(id))
+          .filter((space): space is Space => Boolean(space));
+        const orderedSet = new Set(ordered.map((space) => space.id));
+        const next = [...ordered, ...current.filter((space) => !orderedSet.has(space.id))]
+          .map((space, position) => ({ ...space, position }));
+
+        const cached = panelCache.get(storageKeys.scope);
+        if (cached) {
+          const nextPayload: PanelPayload = {
+            ...cached.data,
+            spaces: { ...cached.data.spaces, items: next },
+          };
+          panelCache.set(storageKeys.scope, { ...cached, data: nextPayload });
+          try {
+            localStorage.setItem(storageKeys.snapshot, JSON.stringify(nextPayload));
+          } catch {
+            // Snapshot persistence is best-effort only.
+          }
+        }
+
+        return next;
+      });
+    },
+    [storageKeys.scope, storageKeys.snapshot],
+  );
+
   return {
     spaces,
     folders,
@@ -393,5 +430,6 @@ export function usePanelData(
     loadPanel,
     collapseAll,
     upsertSpace,
+    reorderSpaces,
   };
 }

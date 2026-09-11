@@ -1,9 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   ArrowRight,
@@ -11,8 +9,7 @@ import {
   CheckCircle2,
   Layers3,
   Loader2,
-  LockKeyhole,
-  Mail,
+  MonitorCheck,
   Moon,
   Sun,
   Users,
@@ -39,16 +36,16 @@ type LoginCopy = {
   dataTitle: string;
   dataDescription: string;
   welcomeTitle: string;
-  emailLabel: string;
-  emailPlaceholder: string;
-  passwordLabel: string;
-  forgotPassword: string;
-  signIn: string;
+  googleSignIn: string;
   signingIn: string;
+  googleOnly: string;
   needAccess: string;
-  rateLimited: (seconds: number) => string;
-  invalidLogin: string;
-  connectionError: string;
+  authError: string;
+  calendarError: string;
+  localReview: string;
+  localReviewLoading: string;
+  localReviewHelp: string;
+  localReviewError: string;
 };
 
 const loginCopy: Record<"en" | "pt-BR", LoginCopy> = {
@@ -67,17 +64,16 @@ const loginCopy: Record<"en" | "pt-BR", LoginCopy> = {
     dataTitle: "Data-driven",
     dataDescription: "Insights that help you make better decisions.",
     welcomeTitle: "Welcome back! Please sign in to continue.",
-    emailLabel: "Email address",
-    emailPlaceholder: "admin@upflow.io",
-    passwordLabel: "Password",
-    forgotPassword: "Forgot password?",
-    signIn: "Sign in",
-    signingIn: "Signing in...",
+    googleSignIn: "Continue with Google",
+    signingIn: "Opening Google...",
+    googleOnly: "Your Google account is also connected to Calendar so meetings use the responsible person's agenda.",
     needAccess: "Need access? Ask your workspace admin to invite you.",
-    rateLimited: (seconds: number) =>
-      `Too many login attempts. Please try again in ${seconds} second${seconds === 1 ? "" : "s"}.`,
-    invalidLogin: "Could not sign in. Check your email and password, then try again.",
-    connectionError: "Could not reach Up Flow. Check your connection and try again.",
+    authError: "Google sign-in could not be completed. Please try again.",
+    calendarError: "You signed in, but Calendar could not be connected. Reconnect it from Calendar.",
+    localReview: "Open local review environment",
+    localReviewLoading: "Opening review environment...",
+    localReviewHelp: "Localhost only · temporary administrator session",
+    localReviewError: "The local review session could not be started.",
   },
   "pt-BR": {
     themeLight: "Alternar para modo claro",
@@ -94,17 +90,16 @@ const loginCopy: Record<"en" | "pt-BR", LoginCopy> = {
     dataTitle: "Orientado por dados",
     dataDescription: "Insights para tomar melhores decisões.",
     welcomeTitle: "Bem-vindo de volta! Entre para continuar.",
-    emailLabel: "E-mail",
-    emailPlaceholder: "admin@upflow.io",
-    passwordLabel: "Senha",
-    forgotPassword: "Esqueceu a senha?",
-    signIn: "Entrar",
-    signingIn: "Entrando...",
+    googleSignIn: "Continuar com Google",
+    signingIn: "Abrindo o Google...",
+    googleOnly: "Sua conta Google também será conectada ao Agenda para que as reuniões usem a agenda do responsável.",
     needAccess: "Precisa de acesso? Peça para o administrador do workspace convidar você.",
-    rateLimited: (seconds: number) =>
-      `Muitas tentativas de login. Tente novamente em ${seconds} segundo${seconds === 1 ? "" : "s"}.`,
-    invalidLogin: "Não foi possível entrar. Confira seu e-mail e senha e tente novamente.",
-    connectionError: "Não foi possível acessar o Up Flow. Confira sua conexão e tente novamente.",
+    authError: "Não foi possível concluir o acesso com Google. Tente novamente.",
+    calendarError: "Você entrou, mas o Agenda não foi conectado. Reconecte pela página Calendário.",
+    localReview: "Acessar ambiente de verificação",
+    localReviewLoading: "Abrindo ambiente de verificação...",
+    localReviewHelp: "Somente no localhost · sessão temporária de administrador",
+    localReviewError: "Não foi possível iniciar a sessão local de verificação.",
   },
 };
 
@@ -258,74 +253,58 @@ function BrandPanel({ copy }: { copy: LoginCopy }) {
   );
 }
 
-function AuthField({
-  label,
-  icon,
-  children,
-  action,
-}: {
-  label: string;
-  icon: ReactNode;
-  children: ReactNode;
-  action?: ReactNode;
-}) {
+function GoogleLogo() {
   return (
-    <div>
-      <div className="mb-3 flex items-center justify-between gap-4">
-        <label className="text-sm font-medium text-slate-950 dark:text-white">{label}</label>
-        {action}
-      </div>
-      <div className="group flex min-h-[68px] items-center gap-4 rounded-2xl border border-slate-200 bg-white px-5 shadow-[0_16px_48px_rgba(15,23,42,0.06)] transition focus-within:border-blue-500 focus-within:shadow-[0_0_34px_rgba(59,130,246,0.18)] dark:border-white/[0.15] dark:bg-white/[0.15] dark:shadow-[0_1px_0_rgba(255,255,255,0.05)_inset] dark:focus-within:border-blue-400/70 dark:focus-within:bg-white/[0.15]">
-        <div className="text-slate-500 transition group-focus-within:text-blue-600 dark:text-slate-400 dark:group-focus-within:text-blue-300">
-          {icon}
-        </div>
-        {children}
-      </div>
-    </div>
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6 shrink-0">
+      <path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.23-.2-1.77H12v3.4h5.52a4.7 4.7 0 0 1-2.05 3.08l-.02.11 2.98 2.31.21.02c1.94-1.79 2.96-4.42 2.96-7.15Z" />
+      <path fill="#34A853" d="M12 22c2.7 0 4.96-.89 6.64-2.62l-3.17-2.44c-.85.57-1.99.97-3.47.97a6.03 6.03 0 0 1-5.7-4.17l-.1.01-3.1 2.4-.04.1A10 10 0 0 0 12 22Z" />
+      <path fill="#FBBC05" d="M6.3 13.74A6.2 6.2 0 0 1 5.97 12c0-.61.11-1.2.32-1.75v-.12L3.16 7.7l-.1.05A10 10 0 0 0 2 12c0 1.53.35 2.97 1.06 4.25l3.24-2.51Z" />
+      <path fill="#EA4335" d="M12 6.09c1.88 0 3.14.81 3.86 1.48l2.84-2.76A9.57 9.57 0 0 0 12 2a10 10 0 0 0-8.94 5.75l3.23 2.5A6.06 6.06 0 0 1 12 6.09Z" />
+    </svg>
   );
 }
 
 export default function LoginPage() {
-  const router = useRouter();
   const { language } = useLanguage();
   const copy = loginCopy[language];
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [localLoading, setLocalLoading] = useState(false);
+  const [localAccessAvailable, setLocalAccessAvailable] = useState(false);
   const [nextPath, setNextPath] = useState("/");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    setLocalAccessAvailable(
+      process.env.NODE_ENV !== "production" &&
+        ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname),
+    );
     const next = params.get("next");
-    const inviteEmail = params.get("email");
     setNextPath(safeInternalPath(next));
-    if (inviteEmail) setEmail(inviteEmail);
-  }, []);
+    const authError = params.get("auth_error");
+    if (authError === "calendar") toast.error(copy.calendarError);
+    else if (authError) toast.error(copy.authError);
+  }, [copy.authError, copy.calendarError]);
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
+  function continueWithGoogle() {
     if (loading) return;
     setLoading(true);
+    window.location.assign(`/api/auth/google?next=${encodeURIComponent(nextPath)}`);
+  }
+
+  async function continueWithLocalReview() {
+    if (loading || localLoading) return;
+    setLocalLoading(true);
     try {
-      const res = await fetch("/api/auth/login", {
+      const response = await fetch("/api/auth/local-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: "{}",
       });
-      const body = await res.json().catch(() => ({}));
-      if (res.status === 429) {
-        const retryAfter = Number(res.headers.get("Retry-After")) || 60;
-        toast.error(copy.rateLimited(retryAfter));
-      } else if (!res.ok) {
-        toast.error(body.error || copy.invalidLogin);
-      } else {
-        router.push(nextPath);
-        router.refresh();
-      }
+      if (!response.ok) throw new Error("Local review login failed");
+      window.location.assign(nextPath);
     } catch {
-      toast.error(copy.connectionError);
-    } finally {
-      setLoading(false);
+      toast.error(copy.localReviewError);
+      setLocalLoading(false);
     }
   }
 
@@ -352,46 +331,12 @@ export default function LoginPage() {
               <p className="mt-3 text-lg text-slate-600 dark:text-slate-400">{copy.welcomeTitle}</p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-7">
-              <AuthField label={copy.emailLabel} icon={<Mail className="h-6 w-6" />}>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  placeholder={copy.emailPlaceholder}
-                  autoComplete="email"
-                  className="h-full min-w-0 flex-1 bg-transparent text-lg text-slate-950 outline-none placeholder:text-slate-400 dark:text-white dark:placeholder:text-slate-500"
-                />
-              </AuthField>
-
-              <AuthField
-                label={copy.passwordLabel}
-                icon={<LockKeyhole className="h-6 w-6" />}
-                action={
-                  <Link
-                    href="/auth/forgot"
-                    className="text-sm font-medium text-blue-600 transition hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-200"
-                  >
-                    {copy.forgotPassword}
-                  </Link>
-                }
-              >
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  placeholder="************"
-                  autoComplete="current-password"
-                  className="h-full min-w-0 flex-1 bg-transparent text-lg text-slate-950 outline-none placeholder:text-slate-400 dark:text-white dark:placeholder:text-slate-500"
-                />
-              </AuthField>
-
+            <div className="space-y-5">
               <button
-                type="submit"
+                type="button"
+                onClick={continueWithGoogle}
                 disabled={loading}
-                className="group flex min-h-[68px] w-full items-center justify-center gap-4 rounded-2xl bg-gradient-to-r from-blue-600 via-blue-500 to-violet-500 px-6 text-lg font-bold text-white shadow-[0_18px_55px_rgba(37,99,235,0.38)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_70px_rgba(79,70,229,0.46)] disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
+                className="group flex min-h-[68px] w-full items-center justify-center gap-4 rounded-2xl border border-slate-200 bg-white px-6 text-lg font-bold text-slate-900 shadow-[0_18px_55px_rgba(15,23,42,0.12)] transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-[0_22px_70px_rgba(37,99,235,0.22)] disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/15 dark:bg-white/[0.12] dark:text-white dark:hover:border-blue-400/50"
               >
                 {loading ? (
                   <>
@@ -400,12 +345,36 @@ export default function LoginPage() {
                   </>
                 ) : (
                   <>
-                    {copy.signIn}
+                    <GoogleLogo />
+                    {copy.googleSignIn}
                     <ArrowRight className="h-6 w-6 transition group-hover:translate-x-1" />
                   </>
                 )}
               </button>
-            </form>
+              <p className="px-4 text-center text-sm leading-6 text-slate-500 dark:text-slate-400">
+                {copy.googleOnly}
+              </p>
+              {localAccessAvailable ? (
+                <div className="border-t border-slate-200 pt-5 dark:border-white/10">
+                  <button
+                    type="button"
+                    onClick={continueWithLocalReview}
+                    disabled={loading || localLoading}
+                    className="flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-blue-300/50 bg-blue-50 px-5 text-sm font-semibold text-blue-700 transition hover:border-blue-400 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-blue-400/25 dark:bg-blue-500/10 dark:text-blue-200 dark:hover:bg-blue-500/15"
+                  >
+                    {localLoading ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <MonitorCheck className="h-5 w-5" />
+                    )}
+                    {localLoading ? copy.localReviewLoading : copy.localReview}
+                  </button>
+                  <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-500">
+                    {copy.localReviewHelp}
+                  </p>
+                </div>
+              ) : null}
+            </div>
 
             <div className="mt-12 rounded-2xl border border-slate-200 bg-white p-5 text-center text-slate-600 shadow-[0_18px_54px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-white/[0.15] dark:text-slate-400">
               <div className="mb-2 flex justify-center text-emerald-500 dark:text-emerald-300">

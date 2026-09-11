@@ -90,7 +90,7 @@ async function GET_handler(req: NextRequest) {
           role: true,
           status: true,
           department_id: true,
-          department: { select: { name: true } },
+          department: { select: { name: true, color: true, sort_order: true } },
         },
       },
     },
@@ -116,6 +116,8 @@ async function GET_handler(req: NextRequest) {
       workspace_status: scopedMembership?.status ?? null,
       department_id: scopedMembership?.department_id ?? null,
       department_name: scopedMembership?.department?.name ?? null,
+      department_color: scopedMembership?.department?.color ?? null,
+      department_sort_order: scopedMembership?.department?.sort_order ?? null,
       workspaces: u.memberships.map((m) => ({
         workspace_id: m.workspace_id,
         role: m.role,

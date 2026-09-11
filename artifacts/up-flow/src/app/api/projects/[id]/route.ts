@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import {
-  canAccessWorkspace,
-  isWorkspaceAdminFor,
-} from "@/lib/auth-helpers";
+import { canAccessWorkspace, isWorkspaceAdminFor } from "@/lib/auth-helpers";
 import { requireAuth } from "@/lib/auth-response";
 import { withErrorReporting } from "@/lib/with-error-reporting";
 import { parseAppDate } from "@/lib/utils";
@@ -12,8 +9,16 @@ import {
   canManageProjectMembers,
   canReadProject,
 } from "@/lib/project-access";
-import { deleteProjectsByIds, findActiveOnboardingProject } from "@/lib/project-delete";
+import {
+  deleteProjectsByIds,
+  findActiveOnboardingProject,
+} from "@/lib/project-delete";
 import { isProtectedDesignQueue } from "@/lib/system-projects";
+import { isFinanceContractMirrorProject } from "@/lib/commercial-contract-mirror";
+import {
+  SHARED_ONBOARDING_TASK_AUTOMATION_KEY,
+  isOnboardingMirrorProject,
+} from "@/lib/onboarding-shared-flow";
 import { z } from "zod";
 
 const UpdateProjectSchema = z.object({
@@ -39,10 +44,7 @@ function parsePatchDate(value: string | null | undefined) {
   return parseAppDate(value);
 }
 
-async function GET_handler(
-  req: NextRequest,
-  { params }: RouteContext,
-) {
+async function GET_handler(req: NextRequest, { params }: RouteContext) {
   const _r = await requireAuth();
   if (!_r.ok) return _r.response;
   const auth = _r.auth;
@@ -54,17 +56,51 @@ async function GET_handler(
     include: {
       owner: { select: { id: true, name: true, email: true } },
       space: { select: { id: true, name: true, icon: true } },
+      folder: { select: { id: true, name: true, icon: true } },
       _count: { select: { tasks: true, docs: true } },
     },
   });
 
-  if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!project)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!(await canReadProject(auth, project))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  const isContractMirror = isFinanceContractMirrorProject({
+    projectName: project.name,
+    spaceName: project.space?.name,
+  });
+  const onboardingMirror = isOnboardingMirrorProject({
+    projectName: project.name,
+    onboardingEnabled: project.onboarding_enabled,
+    companyId: project.company_id,
+  });
+  const taskCount = onboardingMirror
+    ? await prisma.task.count({
+        where: {
+          project: { workspace_id: project.workspace_id },
+          onboarding_items: {
+            some: { automation_key: SHARED_ONBOARDING_TASK_AUTOMATION_KEY },
+          },
+        },
+      })
+    : isContractMirror
+      ? await prisma.task.count({
+          where: {
+            OR: [
+              { project_id: project.id },
+              {
+                commercial_contract_handoff: { isNot: null },
+                project: { workspace_id: project.workspace_id },
+              },
+            ],
+          },
+        })
+      : project._count.tasks;
 
   return NextResponse.json({
     ...project,
+    _count: { ...project._count, tasks: taskCount },
     capabilities: {
       canContribute: await canContributeToProject(auth, project),
       canManageMembers: canManageProjectMembers(auth, project),
@@ -72,10 +108,7 @@ async function GET_handler(
   });
 }
 
-async function PATCH_handler(
-  req: NextRequest,
-  { params }: RouteContext,
-) {
+async function PATCH_handler(req: NextRequest, { params }: RouteContext) {
   const _r = await requireAuth();
   if (!_r.ok) return _r.response;
   const auth = _r.auth;
@@ -93,7 +126,8 @@ async function PATCH_handler(
       space: { select: { name: true } },
     },
   });
-  if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!project)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!canAccessWorkspace(auth, project.workspace_id)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -129,8 +163,14 @@ async function PATCH_handler(
   if (parsedDueDate === "invalid") {
     return NextResponse.json({ error: "Invalid due_date" }, { status: 400 });
   }
-  if (parsedClosingDate === "invalid" || parsedOnboardingStartDate === "invalid") {
-    return NextResponse.json({ error: "Invalid onboarding date" }, { status: 400 });
+  if (
+    parsedClosingDate === "invalid" ||
+    parsedOnboardingStartDate === "invalid"
+  ) {
+    return NextResponse.json(
+      { error: "Invalid onboarding date" },
+      { status: 400 },
+    );
   }
 
   const isProtectedQueue = isProtectedDesignQueue({
@@ -156,7 +196,8 @@ async function PATCH_handler(
     // Match the Company -> Project lock order used by onboarding and client
     // deletion. The company lock also keeps an explicit reassignment target
     // alive until the project update commits.
-    const companyToLock = company_id === undefined ? project.company_id : company_id;
+    const companyToLock =
+      company_id === undefined ? project.company_id : company_id;
     if (companyToLock) {
       const lockedCompany = await tx.$queryRaw<Array<{ id: string }>>`
         SELECT "id" FROM "Company"
@@ -184,20 +225,31 @@ async function PATCH_handler(
         },
       },
     });
-    if (!current) return { ok: false as const, status: 404, error: "Not found" };
+    if (!current)
+      return { ok: false as const, status: 404, error: "Not found" };
 
     if (space_id) {
       const space = await tx.space.findUnique({ where: { id: space_id } });
-      if (!space) return { ok: false as const, status: 400, error: "Space not found" };
+      if (!space)
+        return { ok: false as const, status: 400, error: "Space not found" };
       if (space.workspace_id !== current.workspace_id) {
-        return { ok: false as const, status: 400, error: "Cannot move across workspaces" };
+        return {
+          ok: false as const,
+          status: 400,
+          error: "Cannot move across workspaces",
+        };
       }
     }
     if (folder_id) {
       const folder = await tx.folder.findUnique({ where: { id: folder_id } });
-      if (!folder) return { ok: false as const, status: 400, error: "Folder not found" };
+      if (!folder)
+        return { ok: false as const, status: 400, error: "Folder not found" };
       if (folder.workspace_id !== current.workspace_id) {
-        return { ok: false as const, status: 400, error: "Cannot move across workspaces" };
+        return {
+          ok: false as const,
+          status: 400,
+          error: "Cannot move across workspaces",
+        };
       }
       const targetSpaceId = space_id ?? current.space_id;
       if (targetSpaceId && folder.space_id !== targetSpaceId) {
@@ -210,9 +262,9 @@ async function PATCH_handler(
     }
     const hasOnboardingWorkflow = Boolean(
       current.client_onboarding ||
-        current._count.marketing_b2b_onboarding_forms > 0 ||
-        current._count.marketing_b2c_onboarding_forms > 0 ||
-        current._count.tasks > 0,
+      current._count.marketing_b2b_onboarding_forms > 0 ||
+      current._count.marketing_b2c_onboarding_forms > 0 ||
+      current._count.tasks > 0,
     );
     if (
       hasOnboardingWorkflow &&
@@ -222,17 +274,20 @@ async function PATCH_handler(
       return {
         ok: false as const,
         status: 409,
-        error: "The client cannot be changed while this project has onboarding records",
+        error:
+          "The client cannot be changed while this project has onboarding records",
       };
     }
-    const effectiveCompanyId = company_id !== undefined ? company_id : current.company_id;
-    const nextKind = current.kind === "operational_queue"
-      ? undefined
-      : hasOnboardingWorkflow
-        ? "onboarding"
-        : effectiveCompanyId
-          ? "client"
-          : "internal";
+    const effectiveCompanyId =
+      company_id !== undefined ? company_id : current.company_id;
+    const nextKind =
+      current.kind === "operational_queue"
+        ? undefined
+        : hasOnboardingWorkflow
+          ? "onboarding"
+          : effectiveCompanyId
+            ? "client"
+            : "internal";
 
     const updated = await tx.project.update({
       where: { id },
@@ -242,9 +297,15 @@ async function PATCH_handler(
         ...(status !== undefined && { status }),
         ...(parsedDueDate !== undefined && { due_date: parsedDueDate }),
         ...(onboarding_enabled !== undefined && { onboarding_enabled }),
-        ...(parsedClosingDate !== undefined && { closing_date: parsedClosingDate }),
-        ...(parsedOnboardingStartDate !== undefined && { onboarding_start_date: parsedOnboardingStartDate }),
-        ...(responsible_salesperson_id !== undefined && { responsible_salesperson_id: responsible_salesperson_id || null }),
+        ...(parsedClosingDate !== undefined && {
+          closing_date: parsedClosingDate,
+        }),
+        ...(parsedOnboardingStartDate !== undefined && {
+          onboarding_start_date: parsedOnboardingStartDate,
+        }),
+        ...(responsible_salesperson_id !== undefined && {
+          responsible_salesperson_id: responsible_salesperson_id || null,
+        }),
         ...(initial_notes !== undefined && { initial_notes }),
         ...(space_id !== undefined && { space_id: space_id || null }),
         ...(folder_id !== undefined && { folder_id: folder_id || null }),
@@ -275,15 +336,15 @@ async function PATCH_handler(
   });
 
   if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: result.status });
+    return NextResponse.json(
+      { error: result.error },
+      { status: result.status },
+    );
   }
   return NextResponse.json(result.updated);
 }
 
-async function DELETE_handler(
-  req: NextRequest,
-  { params }: RouteContext,
-) {
+async function DELETE_handler(req: NextRequest, { params }: RouteContext) {
   const _r = await requireAuth();
   if (!_r.ok) return _r.response;
   const auth = _r.auth;
@@ -294,7 +355,8 @@ async function DELETE_handler(
     where: { id },
     include: { space: { select: { name: true } } },
   });
-  if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!project)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!canAccessWorkspace(auth, project.workspace_id)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -308,7 +370,10 @@ async function DELETE_handler(
     })
   ) {
     return NextResponse.json(
-      { error: "Design Queue is a protected Creative & Design system list and cannot be deleted." },
+      {
+        error:
+          "Design Queue is a protected Creative & Design system list and cannot be deleted.",
+      },
       { status: 409 },
     );
   }
@@ -340,11 +405,20 @@ async function DELETE_handler(
   });
 
   if (!result.ok) {
-    return NextResponse.json({ error: "Complete the active onboarding workflow before deleting its project." }, { status: 409 });
+    return NextResponse.json(
+      {
+        error:
+          "Complete the active onboarding workflow before deleting its project.",
+      },
+      { status: 409 },
+    );
   }
 
   return NextResponse.json({ success: true, deleted: result.deleted });
 }
 export const GET = withErrorReporting("api:projects/id:GET", GET_handler);
 export const PATCH = withErrorReporting("api:projects/id:PATCH", PATCH_handler);
-export const DELETE = withErrorReporting("api:projects/id:DELETE", DELETE_handler);
+export const DELETE = withErrorReporting(
+  "api:projects/id:DELETE",
+  DELETE_handler,
+);

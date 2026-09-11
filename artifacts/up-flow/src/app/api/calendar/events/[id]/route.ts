@@ -8,11 +8,18 @@ import { recordActivity } from "@/lib/activity";
 import { notifyCalendarEventAssignees } from "@/lib/calendar-notifications";
 import {
   deleteCalendarEventWithGoogleTombstones,
+  hasActiveGoogleCalendarConnection,
+  prepareGoogleCalendarOrganizerChangeInTransaction,
   processGoogleCalendarSyncJob,
   queueGoogleCalendarEventSyncInTransaction,
 } from "@/lib/google-calendar";
 import { logError } from "@/lib/log-error";
 import { getSupabaseAdminClient } from "@/lib/supabase-server";
+import {
+  FALLBACK_EVENT_DURATION_MINUTES,
+  meetingRoomByKey,
+  meetingRoomKeyFromLocation,
+} from "@/lib/meeting-rooms";
 import {
   calendarEventDetailInclude,
   canManageCalendarEvent,
@@ -44,6 +51,8 @@ const UpdateEventSchema = z.object({
 });
 
 type RouteContext = { params: Promise<{ id: string }> };
+
+class MeetingRoomConflictError extends Error {}
 
 async function GET_handler(req: NextRequest, { params }: RouteContext) {
   const { id } = await params;
@@ -86,9 +95,14 @@ async function PATCH_handler(req: NextRequest, { params }: RouteContext) {
 
   const taskId = body.task_id === undefined ? existing.task_id : body.task_id || null;
   const linkedTask = taskId
-    ? await prisma.task.findFirst({
+      ? await prisma.task.findFirst({
         where: { id: taskId, project: { workspace_id: existing.workspace_id } },
-        select: { id: true, project_id: true },
+        select: {
+          id: true,
+          project_id: true,
+          assignee_id: true,
+          followers: { select: { user_id: true } },
+        },
       })
     : null;
   if (taskId && !linkedTask) return NextResponse.json({ error: "Task not found" }, { status: 400 });
@@ -106,6 +120,8 @@ async function PATCH_handler(req: NextRequest, { params }: RouteContext) {
       ...(body.attendee_ids === undefined
         ? existing.attendees.map((attendee) => attendee.user_id)
         : body.attendee_ids),
+      ...(linkedTask?.assignee_id ? [linkedTask.assignee_id] : []),
+      ...(linkedTask?.followers.map((follower) => follower.user_id) ?? []),
       ...(responsibleUserId ? [responsibleUserId] : []),
     ]),
   );
@@ -121,6 +137,22 @@ async function PATCH_handler(req: NextRequest, { params }: RouteContext) {
   if (!relationValidation.ok) {
     return NextResponse.json({ error: relationValidation.error }, { status: 400 });
   }
+  const nextOrganizerUserId = responsibleUserId || existing.created_by;
+  if (
+    existing.google_meet_requested &&
+    !(await hasActiveGoogleCalendarConnection({
+      workspaceId: existing.workspace_id,
+      userId: nextOrganizerUserId,
+    }))
+  ) {
+    return NextResponse.json(
+      {
+        error: "The responsible person must connect their Google account before this online meeting can be assigned to them.",
+        code: "GOOGLE_CALENDAR_CONNECTION_REQUIRED",
+      },
+      { status: 409 },
+    );
+  }
 
   const reminderMinutes =
     body.reminder_minutes === undefined
@@ -129,8 +161,48 @@ async function PATCH_handler(req: NextRequest, { params }: RouteContext) {
   const previousAttendeeIds = new Set(existing.attendees.map((attendee) => attendee.user_id));
   const replaceAttendees = body.attendee_ids !== undefined || body.responsible_user_id !== undefined;
   const newlyAddedAttendees = attendeeIds.filter((userId) => !previousAttendeeIds.has(userId));
-  const mutation = await prisma.$transaction(async (tx) => {
-    const event = await tx.calendarEvent.update({
+  const nextLocation =
+    body.location === undefined ? existing.location : body.location || null;
+  const nextType = body.type ?? existing.type;
+  const meetingRoomKey =
+    nextType === "meeting" ? meetingRoomKeyFromLocation(nextLocation) : null;
+  const meetingRoom = meetingRoomKey ? meetingRoomByKey(meetingRoomKey) : null;
+  const bookingEndsAt =
+    endsAt ??
+    new Date(
+      startsAt.getTime() + FALLBACK_EVENT_DURATION_MINUTES * 60 * 1000,
+    );
+  let mutation;
+  try {
+    mutation = await prisma.$transaction(async (tx) => {
+      if (meetingRoom) {
+        const fallbackWindowStart = new Date(
+          startsAt.getTime() - FALLBACK_EVENT_DURATION_MINUTES * 60 * 1000,
+        );
+        const conflict = await tx.calendarEvent.findFirst({
+          where: {
+            id: { not: id },
+            workspace_id: existing.workspace_id,
+            status: "scheduled",
+            location: meetingRoom.location,
+            starts_at: { lt: bookingEndsAt },
+            OR: [
+              { ends_at: { gt: startsAt } },
+              { ends_at: null, starts_at: { gt: fallbackWindowStart } },
+            ],
+          },
+          select: { id: true },
+        });
+        if (conflict) throw new MeetingRoomConflictError();
+      }
+
+      const googleCalendarCleanupJobIds =
+        await prepareGoogleCalendarOrganizerChangeInTransaction(
+          tx,
+          existing.id,
+          nextOrganizerUserId,
+        );
+      const event = await tx.calendarEvent.update({
       where: { id },
       data: {
         ...(body.title !== undefined && { title: body.title }),
@@ -162,11 +234,34 @@ async function PATCH_handler(req: NextRequest, { params }: RouteContext) {
         }),
       },
       include: calendarEventDetailInclude,
-    });
-    const googleCalendarJobId = await queueGoogleCalendarEventSyncInTransaction(tx, event.id);
-    return { event, googleCalendarJobId };
-  });
-  const { event: updated, googleCalendarJobId } = mutation;
+      });
+      const googleCalendarJobId = await queueGoogleCalendarEventSyncInTransaction(tx, event.id);
+      return { event, googleCalendarJobId, googleCalendarCleanupJobIds };
+    }, { isolationLevel: "Serializable" });
+  } catch (error) {
+    if (
+      meetingRoom &&
+      (error instanceof MeetingRoomConflictError ||
+        (typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === "P2034"))
+    ) {
+      return NextResponse.json(
+        {
+          error: "The meeting room is already booked for this time range",
+          code: "MEETING_ROOM_CONFLICT",
+        },
+        { status: 409 },
+      );
+    }
+    throw error;
+  }
+  const {
+    event: updated,
+    googleCalendarJobId,
+    googleCalendarCleanupJobIds,
+  } = mutation;
 
   await recordActivity({
     workspace_id: existing.workspace_id,
@@ -189,10 +284,20 @@ async function PATCH_handler(req: NextRequest, { params }: RouteContext) {
 
   // The update and its durable sync job were committed together. Provider work
   // remains asynchronous and is retried by the scheduled maintenance route.
-  if (googleCalendarJobId) {
+  const googleCalendarJobIds = [
+    ...googleCalendarCleanupJobIds,
+    ...(googleCalendarJobId ? [googleCalendarJobId] : []),
+  ];
+  if (googleCalendarJobIds.length > 0) {
     after(() =>
-      processGoogleCalendarSyncJob(googleCalendarJobId).catch((error) =>
-        logError("api:calendar/events/id:PATCH:google-calendar-sync", error, { event_id: updated.id }),
+      Promise.all(
+        googleCalendarJobIds.map((jobId) =>
+          processGoogleCalendarSyncJob(jobId),
+        ),
+      ).catch((error) =>
+        logError("api:calendar/events/id:PATCH:google-calendar-sync", error, {
+          event_id: updated.id,
+        }),
       ),
     );
   }

@@ -1,16 +1,18 @@
 # Google Calendar integration
 
-UpFlow can optionally synchronize a person's own calendar events to the Google
-Calendar account that they connect. This is deliberately an opt-in, per-user,
-**one-way** connection: connecting one person's account never exposes or
-modifies another person's Google Calendar.
+UpFlow synchronizes a meeting to the Google Calendar account connected by its
+responsible person. Connections are per-user and **one-way**: connecting one
+person's account never exposes or modifies another person's Google Calendar.
+Google sign-in now obtains this consent automatically; the Calendar page keeps
+the connection controls for reconnecting, choosing a calendar, and sync
+preferences.
 
 ## What the first release syncs
 
-- An UpFlow event created by the person who connected their Google account is
-  created in their selected Google Calendar. Its title, notes, location,
-  meeting link, start and end time, time zone, and enabled reminders are sent
-  to Google.
+- An UpFlow event is created in the responsible person's selected Google
+  Calendar. If no responsible person is selected, the creator is used. Its
+  title, notes, location, meeting link, start and end time, time zone, and
+  enabled reminders are sent to Google.
 - Later edits and duplication are queued against that same Google Calendar
   event. Cancelling or deleting the UpFlow event queues removal of its linked
   Google event. Rapid edits collapse to the newest version so the integration
@@ -18,9 +20,9 @@ modifies another person's Google Calendar.
 - **Sync now** catches up to 250 of that person's eligible events, including
   recent events (up to seven days ago) and future events. It can also be used
   after turning automatic sync off.
-- Calendar event attendees remain inside UpFlow in this release. They are not
-  sent to Google, so connecting a calendar cannot unexpectedly invite people
-  or email them from Google.
+- Internal attendees and the selected client's contact email are sent as
+  Google attendees. Google delivers invitations and updates from the
+  responsible person's calendar.
 
 Google Calendar events are never imported into UpFlow. This keeps a person's
 private Google events out of their workspace. The integration also does not
@@ -52,6 +54,10 @@ being saved.
 
 ## Google Cloud setup
 
+For the combined Google-only sign-in setup, first follow
+[`google-only-authentication.md`](./google-only-authentication.md). The same
+OAuth Web client is used by Supabase Auth and the Calendar reconnect flow.
+
 1. In the Google Cloud Console, create or choose a project and enable the
    **Google Calendar API**.
 2. Configure the OAuth consent screen. Add the people who will test the app if
@@ -65,6 +71,8 @@ being saved.
 
    It must exactly match `GOOGLE_CALENDAR_REDIRECT_URI`, including `https`,
    path, and any trailing slash choice.
+   Also add Supabase's callback URI shown in the Google-only authentication
+   guide. Both redirects are required.
 5. Add the following environment variables to the deployment where you want
    the integration enabled. Keep client secrets out of source control.
 

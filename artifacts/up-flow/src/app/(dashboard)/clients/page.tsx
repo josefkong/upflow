@@ -31,6 +31,7 @@ import { resolveCompanyCreationAccess } from "@/lib/company-creation-access";
 import { hasWorkspaceAdminAccess } from "@/lib/client-role-access";
 import type { Company } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { CreateActionButton } from "@/components/ui/create-action-button";
 
 type ClientCreationMode = "company" | "onboarding";
 type ClientSalesChannelFilter = "all" | "wholesale" | "retail" | "both" | "unclassified";
@@ -353,11 +354,12 @@ export default function ClientsPage() {
               return (
                 <article
                   key={company.id}
-                  className="upflow-client-card group relative min-w-0 overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm transition-colors hover:border-blue-400/40 hover:bg-accent/40 dark:border-blue-400/25 dark:bg-[#07101f] dark:hover:border-blue-300/50 dark:hover:bg-[#091426]"
+                  data-testid="client-card"
+                  className="upflow-client-card group relative h-[344px] min-w-0 overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm transition-colors hover:border-blue-400/40 hover:bg-accent/40 dark:border-blue-400/25 dark:bg-[#07101f] dark:hover:border-blue-300/50 dark:hover:bg-[#091426]"
                 >
 
-                  <div className="relative p-3">
-                    <div className="flex min-w-0 items-start justify-between gap-2">
+                  <div className="relative flex h-full flex-col p-3">
+                    <div data-testid="client-card-header" className="flex h-20 min-w-0 shrink-0 items-start justify-between gap-2">
                       <Link href={`/clients/${company.id}`} className="flex min-w-0 flex-1 items-center gap-2.5">
                         <span className="upflow-client-avatar flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-blue-300/30 bg-gradient-to-br from-blue-600 via-indigo-700 to-blue-950 text-xl font-bold text-white shadow-sm">
                           {company.name.trim().charAt(0).toUpperCase() || "C"}
@@ -438,8 +440,8 @@ export default function ClientsPage() {
                       </div>
                     </div>
 
-                    <Link href={`/clients/${company.id}`} className="mt-3 block space-y-2.5">
-                      <div className="upflow-client-surface grid grid-cols-2 gap-2 rounded-lg border border-border bg-muted/30 p-2.5 dark:border-blue-200/20 dark:bg-white/5">
+                    <Link href={`/clients/${company.id}`} className="mt-3 flex min-h-0 flex-1 flex-col gap-2.5">
+                      <div data-testid="client-card-facts" className="upflow-client-surface grid h-[58px] shrink-0 grid-cols-2 gap-2 rounded-lg border border-border bg-muted/30 p-2.5 dark:border-blue-200/20 dark:bg-white/5">
                         <ClientFact
                           icon={<Building2 className="h-4 w-4" />}
                           label={t("clients.brandType")}
@@ -454,19 +456,19 @@ export default function ClientsPage() {
 
                       <div
                         data-testid="client-plan-services"
-                        className="flex min-w-0 flex-col items-start gap-1.5"
+                        className="flex h-24 min-w-0 shrink-0 flex-col items-start gap-1.5 overflow-hidden"
                       >
                         <span data-testid="client-plan-services-label" className="flex shrink-0 items-center gap-1.5">
                           <PackageCheck className="h-4 w-4 text-blue-400" />
                           <span className="upflow-client-title text-xs font-bold text-foreground dark:text-white">{t("clients.planServices")}</span>
                         </span>
                         {visibleServices.length > 0 ? (
-                          <div data-testid="client-plan-services-list" className="flex min-w-0 flex-wrap gap-1.5">
+                          <div data-testid="client-plan-services-list" className="grid w-full min-w-0 grid-cols-2 gap-1.5">
                             {visibleServices.map((service) => (
                               <PlanServiceTile key={service} service={service} />
                             ))}
                             {remainingServices > 0 ? (
-                              <span className="upflow-client-service inline-flex min-w-0 items-center justify-center rounded-lg border border-border bg-muted/30 px-2 py-1 text-xs font-semibold text-muted-foreground dark:border-blue-200/20 dark:bg-white/5 dark:text-blue-100/70">
+                              <span className="upflow-client-service inline-flex h-8 min-w-0 items-center justify-center rounded-lg border border-border bg-muted/30 px-2 py-1 text-xs font-semibold text-muted-foreground dark:border-blue-200/20 dark:bg-white/5 dark:text-blue-100/70">
                                 {t("clients.moreServices", { count: remainingServices })}
                               </span>
                             ) : null}
@@ -478,7 +480,7 @@ export default function ClientsPage() {
                         )}
                       </div>
 
-                      <div className="upflow-client-surface flex min-w-0 items-center gap-2 rounded-lg border border-border bg-muted/30 px-2.5 py-2 dark:border-blue-200/20 dark:bg-black/10">
+                      <div data-testid="client-card-manager" className="upflow-client-surface mt-auto flex h-[52px] min-w-0 shrink-0 items-center gap-2 rounded-lg border border-border bg-muted/30 px-2.5 py-2 dark:border-blue-200/20 dark:bg-black/10">
                         <span className="upflow-client-mini-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 ring-1 ring-blue-300/10 dark:text-blue-300">
                           <UserRound className="h-4 w-4" />
                         </span>
@@ -561,7 +563,7 @@ function ClientCreationActions({
           aria-label={[standaloneLabel, standaloneHint].join(": ")}
           data-testid="create-standalone-client"
           className={cn(
-            "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+            "inline-flex h-9 min-h-9 items-center gap-2 rounded-xl px-3 text-xs font-semibold transition-colors",
             canStartOnboarding
               ? "border border-border bg-background text-foreground hover:bg-accent"
               : "bg-primary text-primary-foreground hover:bg-primary/90",
@@ -580,16 +582,14 @@ function ClientCreationActions({
         </button>
       ) : null}
       {canStartOnboarding ? (
-        <button
-          type="button"
+        <CreateActionButton
           onClick={onStartOnboarding}
           aria-label={onboardingLabel}
           data-testid="create-client-onboarding"
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
           <Sparkles className="h-4 w-4" />
           {onboardingLabel}
-        </button>
+        </CreateActionButton>
       ) : null}
     </div>
   );
@@ -621,7 +621,7 @@ function ClientFact({
 
 function PlanServiceTile({ service }: { service: string }) {
   return (
-    <span className="upflow-client-service inline-flex max-w-40 items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-2 py-1 text-xs font-semibold text-foreground dark:border-blue-200/20 dark:bg-white/5 dark:text-white">
+    <span className="upflow-client-service inline-flex h-8 min-w-0 items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-2 py-1 text-xs font-semibold text-foreground dark:border-blue-200/20 dark:bg-white/5 dark:text-white">
       <span className="upflow-client-mini-icon flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-blue-500/10 text-[10px] font-bold text-blue-600 ring-1 ring-blue-300/10 dark:text-blue-300">
         {serviceInitials(service)}
       </span>

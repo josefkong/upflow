@@ -114,7 +114,13 @@ export function appTimeInputValue(date: string | Date): string {
 export function mergeAppDateAndTime(date: Date, time: string): Date {
   const [hours, minutes] = time.split(":").map(Number);
   const parts = appDateParts(date);
-  return appDateTimeToUtc(parts.year, parts.month, parts.day, hours || 0, minutes || 0);
+  return appDateTimeToUtc(
+    parts.year,
+    parts.month,
+    parts.day,
+    hours || 0,
+    minutes || 0,
+  );
 }
 
 function activeLocale(locale?: string) {
@@ -127,7 +133,10 @@ function activeLocale(locale?: string) {
   return APP_LOCALE;
 }
 
-export function formatDate(date: string | Date | null | undefined, locale?: string): string {
+export function formatDate(
+  date: string | Date | null | undefined,
+  locale?: string,
+): string {
   if (!date) return "";
   return new Intl.DateTimeFormat(activeLocale(locale), {
     day: "2-digit",
@@ -137,7 +146,10 @@ export function formatDate(date: string | Date | null | undefined, locale?: stri
   }).format(normalizeDate(date));
 }
 
-export function formatShortDate(date: string | Date | null | undefined, locale?: string): string {
+export function formatShortDate(
+  date: string | Date | null | undefined,
+  locale?: string,
+): string {
   if (!date) return "";
   return new Intl.DateTimeFormat(activeLocale(locale), {
     day: "2-digit",
@@ -146,17 +158,30 @@ export function formatShortDate(date: string | Date | null | undefined, locale?:
   }).format(normalizeDate(date));
 }
 
-export function formatLongDate(date: string | Date | null | undefined, locale?: string): string {
+export function formatLongDate(
+  date: string | Date | null | undefined,
+  locale?: string,
+): string {
   if (!date) return "";
-  return new Intl.DateTimeFormat(activeLocale(locale), {
+  const resolvedLocale = activeLocale(locale);
+  const formattedDate = new Intl.DateTimeFormat(resolvedLocale, {
     weekday: "long",
     day: "2-digit",
     month: "long",
     timeZone: APP_TIME_ZONE,
   }).format(normalizeDate(date));
+
+  return formattedDate.replace(
+    /(^|,\s+|\s+de\s+)(\p{L})/gu,
+    (_match, prefix: string, initial: string) =>
+      `${prefix}${initial.toLocaleUpperCase(resolvedLocale)}`,
+  );
 }
 
-export function formatDateTime(date: string | Date | null | undefined, locale?: string): string {
+export function formatDateTime(
+  date: string | Date | null | undefined,
+  locale?: string,
+): string {
   if (!date) return "";
   return new Intl.DateTimeFormat(activeLocale(locale), {
     day: "2-digit",
@@ -169,7 +194,10 @@ export function formatDateTime(date: string | Date | null | undefined, locale?: 
   }).format(normalizeDate(date));
 }
 
-export function formatTime(date: string | Date | null | undefined, locale?: string): string {
+export function formatTime(
+  date: string | Date | null | undefined,
+  locale?: string,
+): string {
   if (!date) return "";
   return new Intl.DateTimeFormat(activeLocale(locale), {
     hour: "2-digit",
@@ -179,7 +207,9 @@ export function formatTime(date: string | Date | null | undefined, locale?: stri
   }).format(normalizeDate(date));
 }
 
-export function formatIsoDateInput(date: string | Date | null | undefined): string {
+export function formatIsoDateInput(
+  date: string | Date | null | undefined,
+): string {
   if (!date) return "";
   if (typeof date === "string") {
     const match = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -199,7 +229,9 @@ export function maskBrazilianDateInput(value: string): string {
   return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
 }
 
-export function parseBrazilianDateInput(value: string): string | null | "invalid" {
+export function parseBrazilianDateInput(
+  value: string,
+): string | null | "invalid" {
   const trimmed = value.trim();
   if (!trimmed) return null;
   const match = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
@@ -228,10 +260,27 @@ export function isOverdue(dueDate: string | Date | null | undefined): boolean {
 
 function appDateOrdinal(date: string | Date) {
   const parts = appDateParts(date);
-  return Math.floor(Date.UTC(parts.year, parts.month - 1, parts.day) / 86_400_000);
+  return Math.floor(
+    Date.UTC(parts.year, parts.month - 1, parts.day) / 86_400_000,
+  );
 }
 
-export function relativeDueDateLabel(dueDate: string | Date | null | undefined, locale?: string): string {
+export type DueDateUrgency = "overdue_or_today" | "due_soon" | "planned";
+
+export function dueDateUrgency(
+  dueDate: string | Date,
+  now: string | Date = new Date(),
+): DueDateUrgency {
+  const diffDays = appDateOrdinal(dueDate) - appDateOrdinal(now);
+  if (diffDays <= 0) return "overdue_or_today";
+  if (diffDays <= 2) return "due_soon";
+  return "planned";
+}
+
+export function relativeDueDateLabel(
+  dueDate: string | Date | null | undefined,
+  locale?: string,
+): string {
   if (!dueDate) return "";
   const resolvedLocale = activeLocale(locale);
   const isPortuguese = resolvedLocale.toLowerCase().startsWith("pt");
@@ -239,7 +288,8 @@ export function relativeDueDateLabel(dueDate: string | Date | null | undefined, 
   if (diffDays < 0) return isPortuguese ? "Atrasada" : "Overdue";
   if (diffDays === 0) return isPortuguese ? "Hoje" : "Today";
   if (diffDays === 1) return isPortuguese ? "Amanhã" : "Tomorrow";
-  if (diffDays <= 7) return isPortuguese ? `Em ${diffDays} dias` : `In ${diffDays} days`;
+  if (diffDays <= 7)
+    return isPortuguese ? `Em ${diffDays} dias` : `In ${diffDays} days`;
   return formatDate(dueDate, resolvedLocale);
 }
 

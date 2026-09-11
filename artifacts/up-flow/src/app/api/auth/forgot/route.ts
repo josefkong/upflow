@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
-import { sendEmail } from "@/lib/email/send";
+import { emailIsConfigured, sendEmail } from "@/lib/email/send";
 import { passwordResetEmail } from "@/lib/email/templates";
 import { getEmailOrigin, EmailOriginError } from "@/lib/email/origin";
 import { logError } from "@/lib/log-error";
@@ -53,10 +53,17 @@ async function POST_handler(req: NextRequest) {
   }
 
   const sentCustomEmail = await sendCustomResetEmail(email, redirectTo);
-  const sentRecoveryEmail =
-    sentCustomEmail || (await sendSupabaseRecoveryEmail(email, redirectTo));
+  if (sentCustomEmail) return NEUTRAL;
 
-  if (!sentRecoveryEmail) return unavailableResponse();
+  const recoveryResult = await sendSupabaseRecoveryEmail(email, redirectTo);
+  if (recoveryResult === "rate_limited") {
+    return NextResponse.json(
+      { error: "Too many password reset requests. Please try again later." },
+      { status: 429 },
+    );
+  }
+
+  if (recoveryResult !== "sent") return unavailableResponse();
 
   return NEUTRAL;
 }
@@ -69,6 +76,11 @@ function unavailableResponse() {
 }
 
 async function sendCustomResetEmail(email: string, redirectTo: string): Promise<boolean> {
+  // Avoid generating a recovery token that cannot be delivered. Generating
+  // one here and immediately asking Supabase to send another can trip Auth's
+  // per-user recovery interval, causing the native fallback to return 429.
+  if (!emailIsConfigured()) return false;
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -132,6 +144,13 @@ async function sendCustomResetEmail(email: string, redirectTo: string): Promise<
       return false;
     }
 
+    // In development, sendEmail() records the rendered message in the
+    // terminal and reports devMode instead of delivering it. That is useful
+    // for contributors, but the password-recovery UI explicitly tells the
+    // user to check their inbox. Treat the console-only path as undelivered
+    // so the native Supabase recovery email gets a chance to send.
+    if (result.devMode) return false;
+
     return true;
   } catch (err) {
     logError("auth:forgot:custom-email", err, { email });
@@ -139,13 +158,18 @@ async function sendCustomResetEmail(email: string, redirectTo: string): Promise<
   }
 }
 
-async function sendSupabaseRecoveryEmail(email: string, redirectTo: string): Promise<boolean> {
+type SupabaseRecoveryResult = "sent" | "rate_limited" | "failed";
+
+async function sendSupabaseRecoveryEmail(
+  email: string,
+  redirectTo: string,
+): Promise<SupabaseRecoveryResult> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !anonKey) {
     logError("auth:forgot:supabase-recovery", new Error("Supabase public auth env is not set"));
-    return false;
+    return "failed";
   }
 
   try {
@@ -155,12 +179,15 @@ async function sendSupabaseRecoveryEmail(email: string, redirectTo: string): Pro
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
     if (error) {
       logError("auth:forgot:supabase-recovery", error, { email });
-      return false;
+      if (error.status === 429 || error.code === "over_email_send_rate_limit") {
+        return "rate_limited";
+      }
+      return "failed";
     }
-    return true;
+    return "sent";
   } catch (err) {
     logError("auth:forgot:supabase-recovery", err, { email });
-    return false;
+    return "failed";
   }
 }
 

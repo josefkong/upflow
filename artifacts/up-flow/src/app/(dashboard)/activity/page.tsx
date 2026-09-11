@@ -17,9 +17,13 @@ import {
   UserRound,
 } from "lucide-react";
 import Header from "@/components/layout/header";
-import { activityEntityLabel, activityEventLabel } from "@/lib/activity-labels";
+import {
+  activityEntityLabel,
+  activityEventLabel,
+  formatActivityDateTime,
+} from "@/lib/activity-labels";
 import type { ActivityEvent } from "@/lib/types";
-import { cn, formatDate } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/language-provider";
 
 const ENTITY_OPTIONS = [
@@ -231,7 +235,11 @@ function AuditRow({
           <InlineField icon={<Building2 className="h-4 w-4" />} label={t("activity.client")} value={t("activity.notLinked")} />
         )}
       </div>
-      <InlineField icon={<Clock3 className="h-4 w-4" />} label={t("activity.when")} value={formatDate(event.created_at, locale)} />
+      <InlineField
+        icon={<Clock3 className="h-4 w-4" />}
+        label={t("activity.when")}
+        value={formatActivityDateTime(event.created_at, locale)}
+      />
       <InlineField icon={<Database className="h-4 w-4" />} label={t("activity.metadata")} value={metadata} mono />
     </article>
   );

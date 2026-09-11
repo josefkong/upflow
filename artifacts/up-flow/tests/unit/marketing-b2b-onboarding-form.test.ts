@@ -49,22 +49,22 @@ test("Marketing B2B onboarding uses routed department form tasks", () => {
   assert.match(helper, /b2bFormServices/);
   assert.match(helper, /marketingB2BOnboardingForm\.create/);
   assert.match(helper, /function shouldCreateDedicatedServiceTask\(service: string\)[\s\S]*serviceWorkflowFor\(service\) !== null/);
-  assert.match(helper, /const formServiceAlreadyAssigned = b2bFormServiceKeys\.has\(serviceMapKey\) \|\| b2cFormServiceKeys\.has\(serviceMapKey\)/);
+  assert.match(helper, /const formServiceAlreadyAssigned\s*=\s*b2bFormServiceKeys\.has\(serviceMapKey\)\s*\|\|\s*b2cFormServiceKeys\.has\(serviceMapKey\)/);
   assert.match(helper, /const dedicatedServiceTask = shouldCreateDedicatedServiceTask\(service\)/);
   assert.match(helper, /formServiceAlreadyAssigned && !dedicatedServiceTask/);
   assert.match(helper, /const existingAssignment =[\s\S]*b2bAssignments\.find[\s\S]*b2cAssignments\.find/);
   assert.match(helper, /if \(!existingAssignment\) \{[\s\S]*onboardingServiceAssignment\.create/);
   assert.match(helper, /VESTI_ONBOARDING_WORKFLOW[\s\S]*Criar e validar o UP Dash/);
   assert.match(helper, /VESTI_ONBOARDING_WORKFLOW[\s\S]*CAMPAIGN_STARTED_TASK_TITLE/);
-  assert.match(helper, /VESTI_CAMPAIGN_STARTED_AUTOMATION_KEY = "marketing_b2b_vesti_campaign_start"/);
+  assert.match(helper, /VESTI_CAMPAIGN_STARTED_AUTOMATION_KEY\s*=\s*"marketing_b2b_vesti_campaign_start"/);
   assert.match(helper, /UP_ZERO_ONBOARDING_WORKFLOW[\s\S]*Treinar o cliente no uso do UP Dash/);
   assert.match(helper, /UP_ZERO_ONBOARDING_WORKFLOW[\s\S]*CAMPAIGN_STARTED_TASK_TITLE/);
-  assert.match(helper, /UP_ZERO_CAMPAIGN_STARTED_AUTOMATION_KEY = "marketing_b2b_up_zero_campaign_start"/);
+  assert.match(helper, /UP_ZERO_CAMPAIGN_STARTED_AUTOMATION_KEY\s*=\s*"marketing_b2b_up_zero_campaign_start"/);
   assert.match(helper, /marketingB2BOnly: true/);
   assert.match(helper, /automation_key: step\.automationKey \?\? null/);
   assert.match(helper, /https:\/\/www\.canva\.com\/folder\/FAHOKHrZriY/);
   assert.match(helper, /for \(const \[stepIndex, step\] of dedicatedWorkflow\.steps\.entries\(\)\)/);
-  assert.match(helper, /department: step\.meeting \? "Service Onboarding"/);
+  assert.match(helper, /department: step\.meeting\s*\? "Service Onboarding"/);
   assert.match(helper, /checklist_item_id: workflowItem\.id/);
   assert.match(helper, /syncDedicatedServiceWorkflows/);
   assert.match(helper, /project_id: projectId, company_id: input\.company\.id/);
@@ -185,8 +185,8 @@ test("Marketing B2B onboarding uses routed department form tasks", () => {
   assert.match(projectPage, /t\("toolbar\.board"\)/);
   assert.match(projectPage, /t\("toolbar\.list"\)/);
   assert.match(projectPage, /\?view=form&task=/);
-  assert.match(projectPage, /embedded[\s\S]*onClose=\{\(\) => router\.replace\(`[\s\S]*\?view=kanban/);
-  assert.match(projectPage, /onAddTask=\{\(\) => canCreateTasks && setCreateOpen\(\{ status: "todo" \}\)\}/);
+  assert.match(projectPage, /embedded[\s\S]*onClose=\{\(\) =>\s*router\.replace\(`[\s\S]*\?view=kanban/);
+  assert.match(projectPage, /onAddTask=\{\(\) =>\s*canCreateTasks && setCreateOpen\(\{ status: "todo" \}\)\s*\}/);
 
   assert.match(translations, /marketingB2BForm\.field\.brandName/);
   assert.match(translations, /marketingB2BForm\.field\.metaAdsAccess/);
@@ -297,7 +297,7 @@ test("explicit onboarding action opens meeting scheduler without title matching"
   assert.deepEqual(getOnboardingTaskAction(task, "project-b2b"), {
     kind: "calendar",
     href:
-      "/calendar?create=meeting&task=task-explicit-meeting&title=Bang+Corporation+-+Marketing+B2B+onboarding+meeting&project=project-b2b&description=Client%3A+Bang+Corporation%0ADepartment%3A+Marketing+B2B%0AMeeting+type%3A+Marketing+B2B+onboarding+meeting%0AResponsible%3A+Pedro+pedro%40example.com%0AAgenda%3A+align+goals%2C+accesses%2C+communication+rhythm%2C+blockers%2C+and+next+steps.%0ATask+notes%3A+No+schedule+keyword+here.&attendees=00000000-0000-0000-0000-000000000001",
+      "/calendar?create=meeting&task=task-explicit-meeting&title=Bang+Corporation+-+Marketing+B2B+Onboarding+Meeting&project=project-b2b&description=Client%3A+Bang+Corporation%0ADepartment%3A+Marketing+B2B%0AMeeting+type%3A+Marketing+B2B+Onboarding+Meeting%0AResponsible%3A+Pedro+pedro%40example.com%0AAgenda%3A+align+goals%2C+accesses%2C+communication+rhythm%2C+blockers%2C+and+next+steps.%0ATask+notes%3A+No+schedule+keyword+here.&attendees=00000000-0000-0000-0000-000000000001",
   });
 });
 

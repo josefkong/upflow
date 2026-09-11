@@ -7,6 +7,7 @@ import { getOnboardingCompletionBlocker, loadOnboardingAccess, recomputeOnboardi
 import { isFinanceOnboardingFormLocation } from "@/lib/onboarding-routing";
 import { canReadProject } from "@/lib/project-access";
 import { withErrorReporting } from "@/lib/with-error-reporting";
+import { canViewClientFinancials } from "@/lib/client-financial-access";
 
 const FinanceSchema = z.object({
   legal_name: z.string().optional().nullable(),
@@ -171,6 +172,14 @@ async function getAccess(taskId: string) {
   const onboardingAccess = await loadOnboardingAccess(auth, item.onboarding_id);
   if (!onboardingAccess) {
     return { ok: false as const, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  }
+  if (
+    !(await canViewClientFinancials(auth, item.task.project.workspace_id))
+  ) {
+    return {
+      ok: false as const,
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    };
   }
 
   if (

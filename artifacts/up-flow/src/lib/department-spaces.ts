@@ -1,6 +1,7 @@
 import { Prisma, type CustomFieldType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logError } from "@/lib/log-error";
+import { ensureWorkspaceOnboardingMirrorProjects } from "@/lib/onboarding";
 import {
   RH_BOARD_COLUMNS,
   RH_BOARD_COLUMN_OPTIONS,
@@ -12,6 +13,13 @@ import { SOCIAL_MEDIA_LIST_PRESET } from "@/lib/social-media";
 import type { TaskTemplateId } from "@/lib/task-templates";
 import { isCreativeDesignDepartmentName } from "@/lib/company-creation-access";
 import { isDesignQueueName } from "@/lib/system-projects";
+import { ensureWorkspaceClientsProjects } from "@/lib/client-space-structure";
+import {
+  COMMERCIAL_LEAD_STAGE_FIELD_NAME,
+  COMMERCIAL_LEAD_STAGES,
+} from "@/lib/commercial-lead-stages";
+import { ensureSharedContractsRegistryProjects } from "@/lib/commercial-contract-mirror";
+import { ensureEquipmentControlProject } from "@/lib/equipment-control";
 
 export type DepartmentSpaceKey =
   | "comercial"
@@ -22,6 +30,16 @@ export type DepartmentSpaceKey =
   | "production"
   | "technical_support"
   | "general_admin";
+
+/**
+ * The current UP Flow starts in Comercial and continues in Financeiro. Other
+ * department Spaces remain available as empty containers until their workflow
+ * is explicitly designed.
+ */
+export const PROJECT_BEARING_DEPARTMENT_KEYS = new Set<DepartmentSpaceKey>([
+  "comercial",
+  "finance",
+]);
 
 export interface DepartmentSpacePreset {
   department_key: DepartmentSpaceKey;
@@ -75,8 +93,44 @@ export const DEPARTMENT_SPACE_PRESETS: DepartmentSpacePreset[] = [
     department_key: "comercial",
     name: "Comercial",
     emoji: "💼",
-    description: "Sales pipeline, proposals, follow-ups, contracts, and commissions.",
-    starter_lists: ["Leads", "Proposals", "Follow-ups", "Contracts"],
+    description:
+      "Sales pipeline, proposals, follow-ups, contracts, and commissions.",
+    starter_lists: [
+      "Leads",
+      "Proposals",
+      "Follow Up",
+      "Contracts",
+      "Customer Service",
+    ],
+    starter_list_presets: [
+      {
+        name: "Leads",
+        custom_fields: [
+          {
+            name: COMMERCIAL_LEAD_STAGE_FIELD_NAME,
+            type: "dropdown",
+            options: COMMERCIAL_LEAD_STAGES.map((stage) => stage.name),
+            position: 0,
+          },
+        ],
+        workflow_statuses: COMMERCIAL_LEAD_STAGES.map((stage) => ({
+          key: `commercial-lead-${stage.key}`,
+          name: stage.name,
+          color: stage.color,
+          terminal: stage.terminal,
+        })),
+      },
+      {
+        name: "Contracts",
+        description:
+          "Automatic registry of active and inactive clients and their contract history.",
+      },
+      {
+        name: "Customer Service",
+        description:
+          "Commercial customer service workspace for client requests and relationship follow-up.",
+      },
+    ],
     default_task_template_id: "commercial",
     dashboard_focus_labels: {
       urgent: "Deals, follow-ups, and proposals needing action",
@@ -85,7 +139,8 @@ export const DEPARTMENT_SPACE_PRESETS: DepartmentSpacePreset[] = [
       meetings: "Sales meetings linked to this Space",
       activity: "Pipeline and contract activity",
       risk: "Deals or contracts with stale movement",
-      empty: "Create a commercial list to start tracking leads, proposals, and follow-ups.",
+      empty:
+        "Create a commercial list to start tracking leads, proposals, and follow-ups.",
     },
   },
   {
@@ -93,7 +148,12 @@ export const DEPARTMENT_SPACE_PRESETS: DepartmentSpacePreset[] = [
     name: "Marketing B2B",
     emoji: "🎯",
     description: "B2B campaigns, outbound, landing pages, and reporting.",
-    starter_lists: ["Campaigns", "LinkedIn & Outbound", "Landing Pages", "Reports"],
+    starter_lists: [
+      "Campaigns",
+      "LinkedIn & Outbound",
+      "Landing Pages",
+      "Reports",
+    ],
     default_task_template_id: "b2b_marketing",
     dashboard_focus_labels: {
       urgent: "B2B campaigns and reports needing action",
@@ -102,7 +162,8 @@ export const DEPARTMENT_SPACE_PRESETS: DepartmentSpacePreset[] = [
       meetings: "B2B planning and review meetings",
       activity: "Campaign and outbound activity",
       risk: "Campaigns with overdue work or no movement",
-      empty: "Create a B2B marketing list to organize campaigns, outbound, and reports.",
+      empty:
+        "Create a B2B marketing list to organize campaigns, outbound, and reports.",
     },
   },
   {
@@ -119,7 +180,8 @@ export const DEPARTMENT_SPACE_PRESETS: DepartmentSpacePreset[] = [
       meetings: "Consumer campaign meetings",
       activity: "Content, ads, and promo activity",
       risk: "Campaigns with overdue work or stalled publishing",
-      empty: "Create a B2C marketing list to plan campaigns, content, ads, and promotions.",
+      empty:
+        "Create a B2C marketing list to plan campaigns, content, ads, and promotions.",
     },
   },
   {
@@ -143,15 +205,20 @@ export const DEPARTMENT_SPACE_PRESETS: DepartmentSpacePreset[] = [
       meetings: "Creative reviews linked to this Space",
       activity: "Design queue and approval activity",
       risk: "Creative work blocked, overdue, or waiting approval",
-      empty: "Create a creative list to manage design requests, reviews, and approvals.",
+      empty:
+        "Create a creative list to manage design requests, reviews, and approvals.",
     },
   },
   {
     department_key: "finance",
     name: "Finance",
     emoji: "💰",
-    description: "Invoices, payments, commissions, expenses, and cashflow operations.",
-    starter_lists: ["Invoices", "Payments", "Commissions", "Expenses"],
+    description:
+      "Invoices, payments, commissions, expenses, and cashflow operations.",
+    // Finance receives only projects that are destinations of the fixed Flow:
+    // the mirrored Onboarding project and Contracts & Handoffs. Do not seed
+    // generic queues that are not connected to an automatic transition.
+    starter_lists: [],
     default_task_template_id: "finance",
     dashboard_focus_labels: {
       urgent: "Invoices, payments, or commissions needing action",
@@ -160,14 +227,16 @@ export const DEPARTMENT_SPACE_PRESETS: DepartmentSpacePreset[] = [
       meetings: "Finance meetings linked to this Space",
       activity: "Invoice, payment, and expense activity",
       risk: "Finance work overdue, unpaid, or missing ownership",
-      empty: "Create a finance list to track invoices, payments, commissions, and expenses.",
+      empty:
+        "Create a finance list to track invoices, payments, commissions, and expenses.",
     },
   },
   {
     department_key: "production",
     name: "Production",
     emoji: "🎬",
-    description: "Shoots, editing, publishing, deliverables, and production handoffs.",
+    description:
+      "Shoots, editing, publishing, deliverables, and production handoffs.",
     starter_lists: ["Shoots", "Editing", "Publishing", "Deliverables"],
     default_task_template_id: "production",
     dashboard_focus_labels: {
@@ -177,32 +246,48 @@ export const DEPARTMENT_SPACE_PRESETS: DepartmentSpacePreset[] = [
       meetings: "Production planning and review meetings",
       activity: "Shoot, editing, and publishing activity",
       risk: "Production work overdue, blocked, or waiting delivery",
-      empty: "Create a production list to manage shoots, editing, publishing, and deliverables.",
+      empty:
+        "Create a production list to manage shoots, editing, publishing, and deliverables.",
     },
   },
   {
     department_key: "technical_support",
     name: "Technical Support",
     emoji: "🛠️",
-    description: "Support tickets, bug reports, access issues, client requests, and resolutions.",
-    starter_lists: ["Support Tickets", "Bug Reports", "Access Issues", "Client Requests", "Resolved"],
+    description:
+      "Support tickets, bug reports, access issues, client requests, and resolutions.",
+    starter_lists: [
+      "Support Tickets",
+      "Bug Reports",
+      "Access Issues",
+      "Client Requests",
+      "Resolved",
+    ],
     default_task_template_id: "technical_support",
     dashboard_focus_labels: {
-      urgent: "Critical tickets, access issues, and client requests needing action",
+      urgent:
+        "Critical tickets, access issues, and client requests needing action",
       workload: "Support workload by owner",
       time: "Tracked on support and troubleshooting",
       meetings: "Support calls and escalation meetings",
       activity: "Ticket, bug, and access activity",
       risk: "Support work overdue, unresolved, or waiting escalation",
-      empty: "Create a support list to manage tickets, bugs, access issues, and client requests.",
+      empty:
+        "Create a support list to manage tickets, bugs, access issues, and client requests.",
     },
   },
   {
     department_key: "general_admin",
     name: "General Admin",
     emoji: "⚙️",
-    description: "Internal requests, access, documents, vendors, and admin operations.",
-    starter_lists: ["Internal Requests", "Access & Accounts", "Documents", "Vendors"],
+    description:
+      "Internal requests, access, documents, vendors, and admin operations.",
+    starter_lists: [
+      "Internal Requests",
+      "Access & Accounts",
+      "Documents",
+      "Vendors",
+    ],
     starter_folders: [
       {
         name: "RH",
@@ -244,7 +329,8 @@ export const DEPARTMENT_SPACE_PRESETS: DepartmentSpacePreset[] = [
       meetings: "Admin meetings linked to this Space",
       activity: "Requests, documents, and vendor activity",
       risk: "Admin work overdue, unowned, or stale",
-      empty: "Create an admin list to handle internal requests, access, documents, and vendors.",
+      empty:
+        "Create an admin list to handle internal requests, access, documents, and vendors.",
     },
   },
 ];
@@ -269,13 +355,16 @@ export function getDepartmentSpacePreset(name: string | null | undefined) {
   if (exactPreset) return exactPreset;
 
   return isCreativeDesignDepartmentName(name)
-    ? DEPARTMENT_SPACE_PRESETS.find(
+    ? (DEPARTMENT_SPACE_PRESETS.find(
         (preset) => preset.department_key === "creative_design",
-      ) ?? null
+      ) ?? null)
     : null;
 }
 
-async function pickDepartmentOwnerId(workspaceId: string, fallbackOwnerId: string) {
+async function pickDepartmentOwnerId(
+  workspaceId: string,
+  fallbackOwnerId: string,
+) {
   const owner =
     (await prisma.workspaceMember.findFirst({
       where: { workspace_id: workspaceId, role: "owner", status: "active" },
@@ -291,14 +380,23 @@ async function pickDepartmentOwnerId(workspaceId: string, fallbackOwnerId: strin
   return owner?.user_id ?? fallbackOwnerId;
 }
 
-function containerKey(spaceId: string, parentId: string | null | undefined, name: string) {
+function containerKey(
+  spaceId: string,
+  parentId: string | null | undefined,
+  name: string,
+) {
   return `${spaceId}:${parentId ?? "root"}:${normalizeDepartmentSpaceName(name)}`;
 }
 
 function sameOptions(current: Prisma.JsonValue | null, expected: string[]) {
   if (!Array.isArray(current)) return expected.length === 0;
-  const strings = current.filter((item): item is string => typeof item === "string");
-  return strings.length === expected.length && strings.every((item, index) => item === expected[index]);
+  const strings = current.filter(
+    (item): item is string => typeof item === "string",
+  );
+  return (
+    strings.length === expected.length &&
+    strings.every((item, index) => item === expected[index])
+  );
 }
 
 function getRootListPresets(preset: DepartmentSpacePreset) {
@@ -309,7 +407,10 @@ function getRootListPresets(preset: DepartmentSpacePreset) {
   }
 
   for (const listPreset of preset.starter_list_presets ?? []) {
-    listPresetsByName.set(normalizeDepartmentSpaceName(listPreset.name), listPreset);
+    listPresetsByName.set(
+      normalizeDepartmentSpaceName(listPreset.name),
+      listPreset,
+    );
   }
 
   return [...listPresetsByName.values()];
@@ -385,15 +486,27 @@ async function ensureDepartmentListModel(
   if (listPreset.custom_fields?.length) {
     const existingFields = await prisma.customFieldDefinition.findMany({
       where: { project_id: projectId },
-      select: { id: true, name: true, type: true, options: true, position: true },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        options: true,
+        position: true,
+      },
     });
     const fieldsByName = new Map(
-      existingFields.map((field) => [normalizeDepartmentSpaceName(field.name), field]),
+      existingFields.map((field) => [
+        normalizeDepartmentSpaceName(field.name),
+        field,
+      ]),
     );
 
     for (const field of listPreset.custom_fields) {
-      const expectedOptions = field.type === "dropdown" ? field.options ?? [] : [];
-      const existing = fieldsByName.get(normalizeDepartmentSpaceName(field.name));
+      const expectedOptions =
+        field.type === "dropdown" ? (field.options ?? []) : [];
+      const existing = fieldsByName.get(
+        normalizeDepartmentSpaceName(field.name),
+      );
       if (!existing) {
         await prisma.customFieldDefinition.create({
           data: {
@@ -414,7 +527,8 @@ async function ensureDepartmentListModel(
       const needsUpdate =
         existing.type !== field.type ||
         existing.position !== position ||
-        (field.type === "dropdown" && !sameOptions(existing.options, expectedOptions));
+        (field.type === "dropdown" &&
+          !sameOptions(existing.options, expectedOptions));
 
       if (needsUpdate) {
         await prisma.customFieldDefinition.update({
@@ -434,7 +548,11 @@ async function ensureDepartmentListModel(
 
   if (listPreset.workflow_statuses?.length) {
     const existingStatuses = await prisma.workflowStatus.findMany({
-      where: { workspace_id: workspaceId, project_id: projectId, category: "task" },
+      where: {
+        workspace_id: workspaceId,
+        project_id: projectId,
+        category: "task",
+      },
       select: {
         id: true,
         key: true,
@@ -445,7 +563,9 @@ async function ensureDepartmentListModel(
         active: true,
       },
     });
-    const statusesByKey = new Map(existingStatuses.map((status) => [status.key, status]));
+    const statusesByKey = new Map(
+      existingStatuses.map((status) => [status.key, status]),
+    );
 
     for (const [index, status] of listPreset.workflow_statuses.entries()) {
       const existing = statusesByKey.get(status.key);
@@ -486,7 +606,10 @@ async function ensureDepartmentListModel(
   }
 }
 
-export async function ensureDepartmentSpaces(workspaceId: string, fallbackOwnerId: string) {
+export async function ensureDepartmentSpaces(
+  workspaceId: string,
+  fallbackOwnerId: string,
+) {
   try {
     const ownerId = await pickDepartmentOwnerId(workspaceId, fallbackOwnerId);
     const existingSpaces = await prisma.space.findMany({
@@ -495,10 +618,14 @@ export async function ensureDepartmentSpaces(workspaceId: string, fallbackOwnerI
       orderBy: [{ position: "asc" }, { created_at: "asc" }],
     });
     const spacesByName = new Map(
-      existingSpaces.map((space) => [normalizeDepartmentSpaceName(space.name), space]),
+      existingSpaces.map((space) => [
+        normalizeDepartmentSpaceName(space.name),
+        space,
+      ]),
     );
     let nextPosition =
-      existingSpaces.reduce((max, space) => Math.max(max, space.position), -1) + 1;
+      existingSpaces.reduce((max, space) => Math.max(max, space.position), -1) +
+      1;
 
     for (const preset of DEPARTMENT_SPACE_PRESETS) {
       const normalizedPresetName = normalizeDepartmentSpaceName(preset.name);
@@ -529,11 +656,15 @@ export async function ensureDepartmentSpaces(workspaceId: string, fallbackOwnerI
     }
 
     const departmentSpaceIds = DEPARTMENT_SPACE_PRESETS.map(
-      (preset) => spacesByName.get(normalizeDepartmentSpaceName(preset.name))?.id,
+      (preset) =>
+        spacesByName.get(normalizeDepartmentSpaceName(preset.name))?.id,
     ).filter((id): id is string => Boolean(id));
 
     const existingFolders = await prisma.folder.findMany({
-      where: { workspace_id: workspaceId, space_id: { in: departmentSpaceIds } },
+      where: {
+        workspace_id: workspaceId,
+        space_id: { in: departmentSpaceIds },
+      },
       select: {
         id: true,
         name: true,
@@ -561,6 +692,7 @@ export async function ensureDepartmentSpaces(workspaceId: string, fallbackOwnerI
     for (const preset of DEPARTMENT_SPACE_PRESETS) {
       const space = spacesByName.get(normalizeDepartmentSpaceName(preset.name));
       if (!space) continue;
+      if (!PROJECT_BEARING_DEPARTMENT_KEYS.has(preset.department_key)) continue;
 
       for (const folderPreset of preset.starter_folders ?? []) {
         const key = containerKey(space.id, null, folderPreset.name);
@@ -591,7 +723,10 @@ export async function ensureDepartmentSpaces(workspaceId: string, fallbackOwnerI
     }
 
     const existingProjects = await prisma.project.findMany({
-      where: { workspace_id: workspaceId, space_id: { in: departmentSpaceIds } },
+      where: {
+        workspace_id: workspaceId,
+        space_id: { in: departmentSpaceIds },
+      },
       select: {
         id: true,
         name: true,
@@ -602,27 +737,39 @@ export async function ensureDepartmentSpaces(workspaceId: string, fallbackOwnerI
       },
     });
     const projectNamesBySpace = new Map<string, Set<string>>();
-    const projectsByFolder = new Map<string, typeof existingProjects[number]>();
+    const projectsByFolder = new Map<
+      string,
+      (typeof existingProjects)[number]
+    >();
     for (const project of existingProjects) {
       if (!project.space_id) continue;
       if (project.company_id === null) {
-        const names = projectNamesBySpace.get(project.space_id) ?? new Set<string>();
+        const names =
+          projectNamesBySpace.get(project.space_id) ?? new Set<string>();
         names.add(normalizeDepartmentSpaceName(project.name));
         projectNamesBySpace.set(project.space_id, names);
       }
       if (project.folder_id && project.company_id === null) {
-        projectsByFolder.set(containerKey(project.folder_id, null, project.name), project);
+        projectsByFolder.set(
+          containerKey(project.folder_id, null, project.name),
+          project,
+        );
       }
     }
 
     for (const preset of DEPARTMENT_SPACE_PRESETS) {
       const space = spacesByName.get(normalizeDepartmentSpaceName(preset.name));
       if (!space) continue;
+      if (!PROJECT_BEARING_DEPARTMENT_KEYS.has(preset.department_key)) continue;
 
       const rootListPresets = getRootListPresets(preset);
-      const existingProjectNames = projectNamesBySpace.get(space.id) ?? new Set<string>();
+      const existingProjectNames =
+        projectNamesBySpace.get(space.id) ?? new Set<string>();
       const missingLists = rootListPresets.filter(
-        (listPreset) => !existingProjectNames.has(normalizeDepartmentSpaceName(listPreset.name)),
+        (listPreset) =>
+          !existingProjectNames.has(
+            normalizeDepartmentSpaceName(listPreset.name),
+          ),
       );
 
       if (missingLists.length > 0) {
@@ -682,7 +829,9 @@ export async function ensureDepartmentSpaces(workspaceId: string, fallbackOwnerI
             await prisma.project.update({
               where: { id: project.id },
               data: {
-                ...(listPreset.description && { description: listPreset.description }),
+                ...(listPreset.description && {
+                  description: listPreset.description,
+                }),
                 kind: "operational_queue",
               },
             });
@@ -693,7 +842,9 @@ export async function ensureDepartmentSpaces(workspaceId: string, fallbackOwnerI
       }
 
       for (const folderPreset of preset.starter_folders ?? []) {
-        const folder = foldersByContainer.get(containerKey(space.id, null, folderPreset.name));
+        const folder = foldersByContainer.get(
+          containerKey(space.id, null, folderPreset.name),
+        );
         if (!folder) continue;
 
         for (const listPreset of folderPreset.starter_lists) {
@@ -720,11 +871,16 @@ export async function ensureDepartmentSpaces(workspaceId: string, fallbackOwnerI
               },
             });
             projectsByFolder.set(projectKey, project);
-          } else if (listPreset.description || project.kind !== "operational_queue") {
+          } else if (
+            listPreset.description ||
+            project.kind !== "operational_queue"
+          ) {
             await prisma.project.update({
               where: { id: project.id },
               data: {
-                ...(listPreset.description && { description: listPreset.description }),
+                ...(listPreset.description && {
+                  description: listPreset.description,
+                }),
                 kind: "operational_queue",
               },
             });
@@ -734,6 +890,27 @@ export async function ensureDepartmentSpaces(workspaceId: string, fallbackOwnerI
         }
       }
     }
+
+    // The mirrored Onboarding projects are part of the department structure,
+    // not a side effect of the first signed contract. Keeping them present from
+    // provisioning time makes every department ready to receive the shared
+    // onboarding tasks as soon as that workflow starts.
+    await ensureWorkspaceOnboardingMirrorProjects(prisma, {
+      workspaceId,
+      ownerId,
+    });
+    await ensureWorkspaceClientsProjects(prisma, {
+      workspaceId,
+      ownerId,
+    });
+    await ensureSharedContractsRegistryProjects(prisma, {
+      workspaceId,
+      fallbackOwnerId: ownerId,
+    });
+    await ensureEquipmentControlProject(prisma, {
+      workspaceId,
+      ownerId,
+    });
   } catch (err) {
     logError("department-spaces:ensure", err, { workspaceId });
     throw err;

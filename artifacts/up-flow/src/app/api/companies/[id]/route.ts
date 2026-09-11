@@ -6,9 +6,24 @@ import { requireAuth } from "@/lib/auth-response";
 import { isWorkspaceAdminFor } from "@/lib/auth-helpers";
 import { recordActivity } from "@/lib/activity";
 import { withErrorReporting } from "@/lib/with-error-reporting";
-import { parseContractedServices, syncClientOnboardingServices } from "@/lib/onboarding";
+import {
+  parseContractedServices,
+  syncClientOnboardingServices,
+} from "@/lib/onboarding";
 import { normalizeOnboardingRouteValue } from "@/lib/onboarding-routing";
 import { timeEntryDurationSeconds } from "@/lib/time-entry-duration";
+import {
+  CLIENTS_REGISTRY_CONTEXT_PARAM,
+  canViewClientFinancialsInContext,
+  redactClientFinancials,
+} from "@/lib/client-financial-access";
+import {
+  canViewClientCreativeTracking,
+  getClientCreativeTaskMetadata,
+  isClientCreativeTrackingTask,
+  resolveClientCreativeTaskStage,
+} from "@/lib/client-creative-tracking";
+import { buildClientOnboardingSectorFolders } from "@/lib/client-onboarding-sector-folders";
 
 const ClientSalesChannelSchema = z.enum(["WHOLESALE", "RETAIL", "BOTH"]);
 
@@ -25,7 +40,11 @@ const UpdateCompanySchema = z.object({
   service_type: z.string().trim().nullable().optional(),
   plan_name: z.string().trim().nullable().optional(),
   billing_cycle: z.string().trim().nullable().optional(),
-  included_services: z.array(z.string().trim().min(1)).max(50).nullable().optional(),
+  included_services: z
+    .array(z.string().trim().min(1))
+    .max(50)
+    .nullable()
+    .optional(),
   plan_notes: z.string().trim().nullable().optional(),
   notes: z.string().trim().nullable().optional(),
   legal_name: z.string().trim().nullable().optional(),
@@ -43,12 +62,20 @@ const UpdateCompanySchema = z.object({
 
 function sameServiceSet(left: unknown, right: unknown) {
   const normalize = (value: string) => normalizeOnboardingRouteValue(value);
-  const toSet = (services: unknown) => Array.from(
-    new Set(parseContractedServices(services).map(normalize).filter((value) => value.length > 0)),
-  ).sort();
+  const toSet = (services: unknown) =>
+    Array.from(
+      new Set(
+        parseContractedServices(services)
+          .map(normalize)
+          .filter((value) => value.length > 0),
+      ),
+    ).sort();
   const leftSet = toSet(left);
   const rightSet = toSet(right);
-  return leftSet.length === rightSet.length && leftSet.every((service, index) => service === rightSet[index]);
+  return (
+    leftSet.length === rightSet.length &&
+    leftSet.every((service, index) => service === rightSet[index])
+  );
 }
 
 async function validateCompanyOwner(ownerId: string, workspaceId: string) {
@@ -64,7 +91,11 @@ async function validateCompanyOwner(ownerId: string, workspaceId: string) {
   return member?.user_id ?? null;
 }
 
-async function getCompany(id: string, workspaceId: string) {
+async function getCompany(
+  id: string,
+  workspaceId: string,
+  options: { canViewCreativeTracking: boolean },
+) {
   const company = await prisma.company.findFirst({
     where: { id, workspace_id: workspaceId },
     include: {
@@ -82,17 +113,6 @@ async function getCompany(id: string, workspaceId: string) {
           status: true,
           due_date: true,
           owner: { select: { id: true, name: true, email: true } },
-          tasks: {
-            select: {
-              id: true,
-              title: true,
-              status: true,
-              priority: true,
-              due_date: true,
-              assignee: { select: { id: true, name: true, email: true } },
-            },
-            orderBy: [{ due_date: "asc" }, { created_at: "desc" }],
-          },
         },
       },
       calendar_events: {
@@ -102,7 +122,40 @@ async function getCompany(id: string, workspaceId: string) {
       activity_events: {
         orderBy: [{ created_at: "desc" }, { id: "asc" }],
         take: 50,
-        include: { actor: { select: { id: true, name: true, email: true, avatar_url: true } } },
+        include: {
+          actor: {
+            select: { id: true, name: true, email: true, avatar_url: true },
+          },
+        },
+      },
+      client_onboardings: {
+        orderBy: [{ created_at: "desc" }, { id: "asc" }],
+        take: 1,
+        select: {
+          checklist_items: {
+            orderBy: [{ sort_order: "asc" }, { created_at: "asc" }],
+            select: {
+              id: true,
+              department: true,
+              status: true,
+              required: true,
+              completed_at: true,
+              task: {
+                select: {
+                  id: true,
+                  project_id: true,
+                  project: {
+                    select: {
+                      id: true,
+                      name: true,
+                      space: { select: { id: true, name: true } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     },
   });
@@ -121,11 +174,28 @@ async function getCompany(id: string, workspaceId: string) {
       select: {
         id: true,
         title: true,
+        description: true,
         status: true,
         priority: true,
         due_date: true,
+        created_at: true,
         assignee: { select: { id: true, name: true, email: true } },
-        project: { select: { id: true, name: true } },
+        custom_field_values: {
+          select: {
+            value: true,
+            updated_at: true,
+            definition: {
+              select: { name: true, type: true, position: true },
+            },
+          },
+        },
+        project: {
+          select: {
+            id: true,
+            name: true,
+            space: { select: { id: true, name: true } },
+          },
+        },
       },
       take: 100,
     }),
@@ -153,9 +223,24 @@ async function getCompany(id: string, workspaceId: string) {
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const sevenDaysAgo = new Date(todayStart);
   sevenDaysAgo.setDate(todayStart.getDate() - 7);
-  const activeProjects = company.projects.filter((project) => project.status === "active");
-  const openTasks = tasks.filter((task) => task.status !== "done");
-  const overdueTasks = openTasks.filter((task) => task.due_date && task.due_date < todayStart);
+  const creativeTasks = tasks.filter((task) =>
+    isClientCreativeTrackingTask({
+      title: task.title,
+      description: task.description,
+      projectName: task.project.name,
+      spaceName: task.project.space?.name,
+    }),
+  );
+  const creativeTaskIds = new Set(creativeTasks.map((task) => task.id));
+  const operationalTasks = tasks.filter((task) => !creativeTaskIds.has(task.id));
+  const visibleTasks = options.canViewCreativeTracking ? tasks : operationalTasks;
+  const activeProjects = company.projects.filter(
+    (project) => project.status === "active",
+  );
+  const openTasks = visibleTasks.filter((task) => task.status !== "done");
+  const overdueTasks = openTasks.filter(
+    (task) => task.due_date && task.due_date < todayStart,
+  );
   const nextDeadline =
     [
       ...company.projects
@@ -169,34 +254,101 @@ async function getCompany(id: string, workspaceId: string) {
   const riskReasons: string[] = [];
   if (company.projects.length === 0) riskReasons.push("No linked projects");
   if (company.contacts.length === 0) riskReasons.push("No contacts");
-  if (overdueTasks.length > 0) riskReasons.push(`${overdueTasks.length} overdue task${overdueTasks.length === 1 ? "" : "s"}`);
-  if (!lastActivityAt || lastActivityAt < sevenDaysAgo) riskReasons.push("No activity in 7 days");
+  if (overdueTasks.length > 0)
+    riskReasons.push(
+      `${overdueTasks.length} overdue task${overdueTasks.length === 1 ? "" : "s"}`,
+    );
+  if (!lastActivityAt || lastActivityAt < sevenDaysAgo)
+    riskReasons.push("No activity in 7 days");
   if (company.contract_value == null) riskReasons.push("No contract value");
   const trackedSeconds = timeEntries.reduce(
     (sum, entry) => sum + timeEntryDurationSeconds(entry),
     0,
   );
   const trackedHours = trackedSeconds / 3600;
-  const assignedMembers = new Map<string, { id: string; name: string; email: string }>();
+  const assignedMembers = new Map<
+    string,
+    { id: string; name: string; email: string }
+  >();
   assignedMembers.set(company.owner.id, company.owner);
   for (const project of company.projects) {
     assignedMembers.set(project.owner.id, project.owner);
   }
-  for (const task of tasks) {
+  for (const task of visibleTasks) {
     if (task.assignee) assignedMembers.set(task.assignee.id, task.assignee);
   }
-  const healthStatus =
-    riskReasons.some((reason) => reason.includes("overdue") || reason === "No linked projects")
-      ? "risk"
-      : riskReasons.length > 0
-        ? "attention"
-        : company.projects.length === 0 && company.contract_value == null && !company.plan_name && !company.service_type
-          ? "not_enough_data"
-          : "healthy";
+  const healthStatus = riskReasons.some(
+    (reason) => reason.includes("overdue") || reason === "No linked projects",
+  )
+    ? "risk"
+    : riskReasons.length > 0
+      ? "attention"
+      : company.projects.length === 0 &&
+          company.contract_value == null &&
+          !company.plan_name &&
+          !company.service_type
+        ? "not_enough_data"
+        : "healthy";
 
+  const { client_onboardings: clientOnboardings, ...companyData } = company;
   return {
-    ...company,
-    tasks,
+    ...companyData,
+    sector_folders: buildClientOnboardingSectorFolders(
+      clientOnboardings[0]?.checklist_items ?? [],
+    ),
+    tasks: operationalTasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      priority: task.priority,
+      due_date: task.due_date,
+      assignee: task.assignee,
+      project: task.project,
+    })),
+    creative_tracking_visible: options.canViewCreativeTracking,
+    creative_work: options.canViewCreativeTracking
+      ? {
+          items: creativeTasks.map((task) => {
+            const metadata = getClientCreativeTaskMetadata(task);
+            const latestStageUpdate = task.custom_field_values.reduce<Date>(
+              (latest, field) =>
+                field.updated_at > latest ? field.updated_at : latest,
+              task.created_at,
+            );
+            return {
+              id: task.id,
+              title: task.title,
+              status: task.status,
+              stage: resolveClientCreativeTaskStage(
+                task.custom_field_values,
+                task.status,
+              ),
+              priority: task.priority,
+              due_date: task.due_date,
+              created_at: task.created_at,
+              last_updated_at: latestStageUpdate,
+              assignee: task.assignee,
+              project: task.project,
+              ...metadata,
+            };
+          }),
+          summary: {
+            total: creativeTasks.length,
+            open: creativeTasks.filter((task) => task.status !== "done").length,
+            in_progress: creativeTasks.filter(
+              (task) => task.status === "in_progress",
+            ).length,
+            completed: creativeTasks.filter((task) => task.status === "done")
+              .length,
+            overdue: creativeTasks.filter(
+              (task) =>
+                task.status !== "done" &&
+                task.due_date != null &&
+                task.due_date < todayStart,
+            ).length,
+          },
+        }
+      : undefined,
     time_entries: timeEntries,
     summary: {
       project_count: company.projects.length,
@@ -229,28 +381,44 @@ async function getCompany(id: string, workspaceId: string) {
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-async function GET_handler(
-  req: NextRequest,
-  { params }: RouteContext,
-) {
+async function GET_handler(req: NextRequest, { params }: RouteContext) {
   const { id } = await params;
   const _r = await requireAuth();
   if (!_r.ok) return _r.response;
   const auth = _r.auth;
-  void req;
   if (!auth.currentWorkspaceId) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const company = await getCompany(id, auth.currentWorkspaceId);
-  if (!company) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json(company);
+  const membership = auth.memberships.find(
+    (item) => item.workspace_id === auth.currentWorkspaceId,
+  );
+  const canViewCreativeTracking = canViewClientCreativeTracking({
+    isWorkspaceAdmin: isWorkspaceAdminFor(auth, auth.currentWorkspaceId),
+    membership: membership
+      ? {
+          role: membership.role,
+          departmentName: membership.department?.name,
+        }
+      : null,
+  });
+  const company = await getCompany(id, auth.currentWorkspaceId, {
+    canViewCreativeTracking,
+  });
+  if (!company)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const canViewFinancials = await canViewClientFinancialsInContext(
+    auth,
+    auth.currentWorkspaceId,
+    req.nextUrl.searchParams.get(CLIENTS_REGISTRY_CONTEXT_PARAM),
+  );
+  return NextResponse.json({
+    ...redactClientFinancials(company, canViewFinancials),
+    financials_visible: canViewFinancials,
+  });
 }
 
-async function PATCH_handler(
-  req: NextRequest,
-  { params }: RouteContext,
-) {
+async function PATCH_handler(req: NextRequest, { params }: RouteContext) {
   const { id } = await params;
   const _r = await requireAuth();
   if (!_r.ok) return _r.response;
@@ -262,28 +430,58 @@ async function PATCH_handler(
   const company = await prisma.company.findFirst({
     where: { id, workspace_id: auth.currentWorkspaceId },
   });
-  if (!company) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!company)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!isWorkspaceAdminFor(auth, company.workspace_id)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const parsed = UpdateCompanySchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid company", issues: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid company", issues: parsed.error.flatten() },
+      { status: 400 },
+    );
+  }
+  const updatesFinancialData = [
+    "contract_value",
+    "commission",
+    "payment_terms",
+    "billing_notes",
+  ].some((field) => field in parsed.data);
+  if (
+    updatesFinancialData &&
+    !(await canViewClientFinancialsInContext(
+      auth,
+      company.workspace_id,
+      req.nextUrl.searchParams.get(CLIENTS_REGISTRY_CONTEXT_PARAM),
+    ))
+  ) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   if (parsed.data.owner_id !== undefined) {
-    const ownerId = await validateCompanyOwner(parsed.data.owner_id, company.workspace_id);
+    const ownerId = await validateCompanyOwner(
+      parsed.data.owner_id,
+      company.workspace_id,
+    );
     if (!ownerId) {
       return NextResponse.json(
-        { error: "Responsible manager must be an active non-guest member of this workspace" },
+        {
+          error:
+            "Responsible manager must be an active non-guest member of this workspace",
+        },
         { status: 400 },
       );
     }
   }
 
-  const includedServicesChanged = "included_services" in parsed.data &&
-    !sameServiceSet(company.included_services, parsed.data.included_services ?? []);
+  const includedServicesChanged =
+    "included_services" in parsed.data &&
+    !sameServiceSet(
+      company.included_services,
+      parsed.data.included_services ?? [],
+    );
   if (includedServicesChanged) {
     const activeOnboarding = await prisma.clientOnboarding.findFirst({
       where: {
@@ -293,9 +491,18 @@ async function PATCH_handler(
       },
       select: { contracted_services: true },
     });
-    if (activeOnboarding && !sameServiceSet(activeOnboarding.contracted_services, parsed.data.included_services ?? [])) {
+    if (
+      activeOnboarding &&
+      !sameServiceSet(
+        activeOnboarding.contracted_services,
+        parsed.data.included_services ?? [],
+      )
+    ) {
       return NextResponse.json(
-        { error: "Services cannot be changed while onboarding is active. Update the onboarding workflow first." },
+        {
+          error:
+            "Services cannot be changed while onboarding is active. Update the onboarding workflow first.",
+        },
         { status: 409 },
       );
     }
@@ -346,18 +553,25 @@ async function PATCH_handler(
       })
     : null;
 
-  return NextResponse.json({
+  const responsePayload = {
     ...updated,
     onboarding_id: onboardingSync?.onboarding.id ?? null,
     synced_onboarding_tasks: onboardingSync?.createdTasks ?? [],
     moved_onboarding_tasks: onboardingSync?.movedTasks ?? 0,
+  };
+  const canViewFinancials = await canViewClientFinancialsInContext(
+    auth,
+    company.workspace_id,
+    req.nextUrl.searchParams.get(CLIENTS_REGISTRY_CONTEXT_PARAM),
+  );
+
+  return NextResponse.json({
+    ...redactClientFinancials(responsePayload, canViewFinancials),
+    financials_visible: canViewFinancials,
   });
 }
 
-async function DELETE_handler(
-  req: NextRequest,
-  { params }: RouteContext,
-) {
+async function DELETE_handler(req: NextRequest, { params }: RouteContext) {
   const { id } = await params;
   const _r = await requireAuth();
   if (!_r.ok) return _r.response;
@@ -371,7 +585,8 @@ async function DELETE_handler(
     where: { id, workspace_id: auth.currentWorkspaceId },
     select: { id: true, workspace_id: true, name: true },
   });
-  if (!company) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!company)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!isWorkspaceAdminFor(auth, company.workspace_id)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -404,5 +619,11 @@ async function DELETE_handler(
 }
 
 export const GET = withErrorReporting("api:companies/id:GET", GET_handler);
-export const PATCH = withErrorReporting("api:companies/id:PATCH", PATCH_handler);
-export const DELETE = withErrorReporting("api:companies/id:DELETE", DELETE_handler);
+export const PATCH = withErrorReporting(
+  "api:companies/id:PATCH",
+  PATCH_handler,
+);
+export const DELETE = withErrorReporting(
+  "api:companies/id:DELETE",
+  DELETE_handler,
+);

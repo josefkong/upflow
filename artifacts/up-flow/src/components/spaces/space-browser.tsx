@@ -41,14 +41,14 @@ export function BrowseTab({
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <button
               onClick={onNewFolder}
-              className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-4 py-2 text-sm font-medium text-foreground hover:bg-white/10"
+              className="inline-flex h-9 min-h-9 items-center gap-2 rounded-xl border border-white/10 px-3.5 text-xs font-semibold text-foreground hover:bg-white/10"
             >
               <FolderPlus className="h-4 w-4" />
               {t("folder.newFolder")}
             </button>
             <button
               onClick={onNewList}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              className="inline-flex h-9 min-h-9 items-center gap-2 rounded-xl bg-primary px-3.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
             >
               <ListPlus className="h-4 w-4" />
               {t("folder.newList")}

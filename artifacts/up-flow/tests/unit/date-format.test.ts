@@ -26,10 +26,7 @@ test("shared date helpers use Brazilian locale and Sao Paulo timezone", () => {
 });
 
 test("long dates render with Brazilian month and weekday names", () => {
-  const label = formatLongDate(SAMPLE_UTC).toLowerCase();
-
-  assert.match(label, /quinta-feira/);
-  assert.match(label, /maio/);
+  assert.equal(formatLongDate(SAMPLE_UTC), "Quinta-feira, 28 de Maio");
 });
 
 test("Brazilian date inputs mask and parse dd/mm/aaaa values", () => {

@@ -136,22 +136,25 @@ export function TaskDetailModal({
         <div className="mt-6 grid gap-2 sm:grid-cols-3">
           <button
             onClick={() => onStatusChange(task, "todo")}
-            disabled={updating || task.status === "todo"}
-            className="rounded-xl bg-white/5 py-2 text-xs font-medium transition-colors hover:bg-white/10 disabled:opacity-40"
+            disabled
+            title={t("task.automaticMovementOnly")}
+            className="cursor-not-allowed rounded-xl bg-white/5 py-2 text-xs font-medium opacity-60"
           >
             {t("status.todo")}
           </button>
           <button
             onClick={() => onStatusChange(task, "in_progress")}
-            disabled={updating || task.status === "in_progress"}
-            className="rounded-xl bg-upflow-warning/20 py-2 text-xs font-medium text-upflow-warning transition-colors hover:bg-upflow-warning/30 disabled:opacity-40"
+            disabled
+            title={t("task.automaticMovementOnly")}
+            className="cursor-not-allowed rounded-xl bg-upflow-warning/20 py-2 text-xs font-medium text-upflow-warning opacity-60"
           >
             {t("status.inProgress")}
           </button>
           <button
             onClick={() => onStatusChange(task, "done")}
-            disabled={updating || task.status === "done"}
-            className="rounded-xl bg-upflow-success/20 py-2 text-xs font-medium text-upflow-success transition-colors hover:bg-upflow-success/30 disabled:opacity-40"
+            disabled
+            title={t("task.automaticMovementOnly")}
+            className="cursor-not-allowed rounded-xl bg-upflow-success/20 py-2 text-xs font-medium text-upflow-success opacity-60"
           >
             {t("task.markDone")}
           </button>
@@ -159,7 +162,8 @@ export function TaskDetailModal({
 
         <button
           onClick={() => {
-            if (confirm(t("task.deleteNamed", { title: task.title }))) onDelete(task);
+            if (confirm(t("task.deleteNamed", { title: task.title })))
+              onDelete(task);
           }}
           disabled={updating}
           className="mt-3 w-full rounded-xl py-2 text-xs font-medium text-upflow-danger transition-colors hover:bg-upflow-danger/10 disabled:opacity-40"

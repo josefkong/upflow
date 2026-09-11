@@ -339,7 +339,7 @@ test.describe("Project detail page (toolbar + kanban + list + task sheet)", () =
     await ctx.close();
   });
 
-  test("kanban drag-and-drop moves a task between columns (keyboard sensor)", async ({
+  test("kanban drag-and-drop keeps workflow-controlled tasks in place", async ({
     browser,
     baseURL,
   }) => {
@@ -363,26 +363,24 @@ test.describe("Project detail page (toolbar + kanban + list + task sheet)", () =
     await expect(handle).toBeVisible();
     await handle.focus();
 
-    // Wait for the persisted reorder PATCH so the reload below shows the
-    // server-side truth rather than just the optimistic UI state.
-    const reorder = page.waitForResponse(
-      (r) =>
-        r.url().includes(`/api/projects/${projectId}/reorder-tasks`) && r.ok(),
-    );
     // Keyboard sensor: Space lifts, ArrowRight moves between columns,
     // Space drops.
     await page.keyboard.press("Space");
     await page.keyboard.press("ArrowRight");
     await page.keyboard.press("Space");
-    await reorder;
+    await expect(
+      page.getByText(
+        "Task stages move automatically when their workflow rules are completed.",
+      ),
+    ).toBeVisible();
 
-    // Reload and confirm the task is now under the in_progress droppable.
+    // Reload and confirm the attempted manual movement was not persisted.
     await page.reload();
     await page.getByRole("button", { name: /^Board$/ }).click();
-    const inProgressDroppable = page.locator(
-      "[data-rfd-droppable-id='in_progress']",
+    const todoDroppable = page.locator(
+      "[data-rfd-droppable-id='todo']",
     );
-    await expect(inProgressDroppable.getByText(title)).toBeVisible({
+    await expect(todoDroppable.getByText(title)).toBeVisible({
       timeout: 10_000,
     });
 
@@ -404,12 +402,11 @@ test.describe("Project detail page (toolbar + kanban + list + task sheet)", () =
     await page.goto(`/projects/${projectId}`);
     await page.getByText(title).first().click();
 
-    // The detail opens as an accessible full task hub, with a main panel and activity rail.
+    // The detail opens as an accessible, focused task hub with one section navigation.
     const taskWorkspace = page.getByTestId("task-detail-workspace");
     await expect(taskWorkspace).toBeVisible();
     await expect(taskWorkspace).toHaveAttribute("role", "dialog");
     await expect(taskWorkspace.getByTestId("task-detail-main")).toBeVisible();
-    await expect(taskWorkspace.getByTestId("task-detail-activity")).toBeVisible();
     await expect(taskWorkspace.getByRole("tablist", { name: "Task sections" })).toBeVisible();
 
     // Editable title input pre-populated with the task title.

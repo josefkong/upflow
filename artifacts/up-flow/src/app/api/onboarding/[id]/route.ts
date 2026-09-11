@@ -20,52 +20,67 @@ import {
   type OnboardingAssignmentNotificationTarget,
 } from "@/lib/onboarding";
 import { withErrorReporting } from "@/lib/with-error-reporting";
+import { sharedOnboardingWhatsAppGroupIsComplete } from "@/lib/onboarding-shared-flow";
 
 const PatchSchema = z.object({
-  finance: z.object({
-    legal_name: z.string().trim().nullable().optional(),
-    cnpj: z.string().trim().nullable().optional(),
-    billing_email: z.string().trim().email().nullable().optional(),
-    main_contact_email: z.string().trim().email().nullable().optional(),
-    phone: z.string().trim().nullable().optional(),
-    whatsapp: z.string().trim().nullable().optional(),
-    address: z.string().trim().nullable().optional(),
-    billing_notes: z.string().trim().nullable().optional(),
-    contract_value: z.number().nullable().optional(),
-    payment_terms: z.string().trim().nullable().optional(),
-    contract_start_date: z.string().nullable().optional(),
-  }).optional(),
-  support_group: z.object({
-    group_created: z.boolean().optional(),
-    group_name: z.string().trim().nullable().optional(),
-    group_link: z.string().trim().nullable().optional(),
-    main_client_contact: z.string().trim().nullable().optional(),
-    commercial_responsible: z.string().trim().nullable().optional(),
-    account_responsible: z.string().trim().nullable().optional(),
-    internal_participants: z.array(z.string()).nullable().optional(),
-    client_participants: z.array(z.string()).nullable().optional(),
-    notes: z.string().trim().nullable().optional(),
-    status: z.enum(["not_created", "created", "waiting_for_client", "not_necessary"]).optional(),
-  }).optional(),
-  meeting: z.object({
-    service: z.string().trim().min(1),
-    scheduled: z.boolean().optional(),
-    scheduled_at: z.string().nullable().optional(),
-    meeting_url: z.string().trim().nullable().optional(),
-    notes: z.string().trim().nullable().optional(),
-  }).optional(),
-  service_assignment: z.object({
-    service: z.string().trim().min(1),
-    leader_id: z.string().trim().nullable().optional(),
-    department_id: z.string().trim().nullable().optional(),
-    notes: z.string().trim().nullable().optional(),
-  }).optional(),
-  completion_override: z.object({
-    reason: z.string().trim().min(8),
-  }).optional(),
-  marketing_b2b_dependency_override: z.object({
-    reason: z.string().trim().min(8),
-  }).optional(),
+  finance: z
+    .object({
+      legal_name: z.string().trim().nullable().optional(),
+      cnpj: z.string().trim().nullable().optional(),
+      billing_email: z.string().trim().email().nullable().optional(),
+      main_contact_email: z.string().trim().email().nullable().optional(),
+      phone: z.string().trim().nullable().optional(),
+      whatsapp: z.string().trim().nullable().optional(),
+      address: z.string().trim().nullable().optional(),
+      billing_notes: z.string().trim().nullable().optional(),
+      contract_value: z.number().nullable().optional(),
+      payment_terms: z.string().trim().nullable().optional(),
+      contract_start_date: z.string().nullable().optional(),
+    })
+    .optional(),
+  support_group: z
+    .object({
+      group_created: z.boolean().optional(),
+      group_name: z.string().trim().nullable().optional(),
+      group_link: z.string().trim().nullable().optional(),
+      main_client_contact: z.string().trim().nullable().optional(),
+      commercial_responsible: z.string().trim().nullable().optional(),
+      account_responsible: z.string().trim().nullable().optional(),
+      internal_participants: z.array(z.string()).nullable().optional(),
+      client_participants: z.array(z.string()).nullable().optional(),
+      notes: z.string().trim().nullable().optional(),
+      status: z
+        .enum(["not_created", "created", "waiting_for_client", "not_necessary"])
+        .optional(),
+    })
+    .optional(),
+  meeting: z
+    .object({
+      service: z.string().trim().min(1),
+      scheduled: z.boolean().optional(),
+      scheduled_at: z.string().nullable().optional(),
+      meeting_url: z.string().trim().nullable().optional(),
+      notes: z.string().trim().nullable().optional(),
+    })
+    .optional(),
+  service_assignment: z
+    .object({
+      service: z.string().trim().min(1),
+      leader_id: z.string().trim().nullable().optional(),
+      department_id: z.string().trim().nullable().optional(),
+      notes: z.string().trim().nullable().optional(),
+    })
+    .optional(),
+  completion_override: z
+    .object({
+      reason: z.string().trim().min(8),
+    })
+    .optional(),
+  marketing_b2b_dependency_override: z
+    .object({
+      reason: z.string().trim().min(8),
+    })
+    .optional(),
 });
 
 function optionalDate(value: string | null | undefined) {
@@ -77,10 +92,7 @@ function optionalDate(value: string | null | undefined) {
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-async function GET_handler(
-  req: NextRequest,
-  { params }: RouteContext,
-) {
+async function GET_handler(req: NextRequest, { params }: RouteContext) {
   const { id } = await params;
   const _r = await requireAuth();
   if (!_r.ok) return _r.response;
@@ -90,29 +102,35 @@ async function GET_handler(
     where: { id },
     select: onboardingSelect(),
   });
-  if (!onboarding) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!onboarding)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   const access = await loadOnboardingAccess(auth, onboarding.id);
-  if (!access) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  const redacted = redactOnboardingContracts(onboarding, access.canViewPrivateContract);
+  if (!access)
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const redacted = redactOnboardingContracts(
+    onboarding,
+    access.canViewPrivateContract,
+  );
   return NextResponse.json({
     ...redacted,
     capabilities: onboardingCapabilities(access, onboarding.checklist_items),
   });
 }
 
-async function PATCH_handler(
-  req: NextRequest,
-  { params }: RouteContext,
-) {
+async function PATCH_handler(req: NextRequest, { params }: RouteContext) {
   const { id } = await params;
   const _r = await requireAuth();
   if (!_r.ok) return _r.response;
   const auth = _r.auth;
   const access = await loadOnboardingAccess(auth, id);
-  if (!access) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!access)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   const parsed = PatchSchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid onboarding update", issues: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid onboarding update", issues: parsed.error.flatten() },
+      { status: 400 },
+    );
   }
 
   const result = await prisma.$transaction(async (tx) => {
@@ -120,7 +138,8 @@ async function PATCH_handler(
     if (parsed.data.finance) {
       if (!access.canUpdateFinance) return null;
       const startDate = optionalDate(parsed.data.finance.contract_start_date);
-      if (startDate === "invalid") throw new Error("Invalid contract start date");
+      if (startDate === "invalid")
+        throw new Error("Invalid contract start date");
       const company = await tx.company.update({
         where: { id: access.onboarding.company_id },
         data: {
@@ -140,7 +159,11 @@ async function PATCH_handler(
       if (financeRegistrationComplete(company)) {
         await tx.onboardingChecklistItem.updateMany({
           where: { onboarding_id: id, department: "Finance" },
-          data: { status: "complete", completed_at: new Date(), completed_by: auth.prismaUser.id },
+          data: {
+            status: "complete",
+            completed_at: new Date(),
+            completed_by: auth.prismaUser.id,
+          },
         });
       }
     }
@@ -149,12 +172,14 @@ async function PATCH_handler(
       if (!access.canUpdateSupport) return null;
       const supportPayload = parsed.data.support_group;
       const groupCreated =
-        supportPayload.group_created === true || supportPayload.status === "created";
+        supportPayload.group_created === true ||
+        supportPayload.status === "created";
       const support = await tx.supportGroup.update({
         where: { onboarding_id: id },
         data: {
           ...supportPayload,
-          ...(supportPayload.group_created !== undefined || supportPayload.status !== undefined
+          ...(supportPayload.group_created !== undefined ||
+          supportPayload.status !== undefined
             ? { group_created: groupCreated }
             : {}),
           ...(groupCreated
@@ -172,8 +197,26 @@ async function PATCH_handler(
       });
       if (support.group_created) {
         await tx.onboardingChecklistItem.updateMany({
-          where: { onboarding_id: id, department: "Support" },
-          data: { status: "complete", completed_at: new Date(), completed_by: auth.prismaUser.id },
+          where: {
+            onboarding_id: id,
+            OR: [
+              { automation_key: "shared_onboarding:internal:support-group" },
+              ...(sharedOnboardingWhatsAppGroupIsComplete(support)
+                ? [
+                    {
+                      automation_key:
+                        "shared_onboarding:internal:01:commercial-whatsapp-group",
+                    },
+                  ]
+                : []),
+              { department: "Support", automation_key: null },
+            ],
+          },
+          data: {
+            status: "complete",
+            completed_at: new Date(),
+            completed_by: auth.prismaUser.id,
+          },
         });
       }
     }
@@ -199,7 +242,11 @@ async function PATCH_handler(
       if (meeting.scheduled && meeting.checklist_item_id) {
         await tx.onboardingChecklistItem.update({
           where: { id: meeting.checklist_item_id },
-          data: { status: "complete", completed_at: new Date(), completed_by: auth.prismaUser.id },
+          data: {
+            status: "complete",
+            completed_at: new Date(),
+            completed_by: auth.prismaUser.id,
+          },
         });
       }
     }
@@ -208,7 +255,10 @@ async function PATCH_handler(
       if (!access.admin) return null;
       const serviceAssignment = parsed.data.service_assignment;
       const leaderWasProvided = Object.hasOwn(serviceAssignment, "leader_id");
-      const departmentWasProvided = Object.hasOwn(serviceAssignment, "department_id");
+      const departmentWasProvided = Object.hasOwn(
+        serviceAssignment,
+        "department_id",
+      );
       const notesWereProvided = Object.hasOwn(serviceAssignment, "notes");
 
       if (leaderWasProvided && serviceAssignment.leader_id) {
@@ -221,7 +271,8 @@ async function PATCH_handler(
           },
           select: { id: true },
         });
-        if (!member) throw new Error("Selected leader is not an active workspace member.");
+        if (!member)
+          throw new Error("Selected leader is not an active workspace member.");
       }
       if (departmentWasProvided && serviceAssignment.department_id) {
         const department = await tx.department.findFirst({
@@ -231,7 +282,10 @@ async function PATCH_handler(
           },
           select: { id: true },
         });
-        if (!department) throw new Error("Selected department does not belong to this workspace.");
+        if (!department)
+          throw new Error(
+            "Selected department does not belong to this workspace.",
+          );
       }
       const assignment = await tx.onboardingServiceAssignment.update({
         where: {
@@ -242,9 +296,14 @@ async function PATCH_handler(
         },
         data: {
           ...(leaderWasProvided
-            ? { leader_id: serviceAssignment.leader_id, status: serviceAssignment.leader_id ? "assigned" : "unassigned" }
+            ? {
+                leader_id: serviceAssignment.leader_id,
+                status: serviceAssignment.leader_id ? "assigned" : "unassigned",
+              }
             : {}),
-          ...(departmentWasProvided ? { department_id: serviceAssignment.department_id } : {}),
+          ...(departmentWasProvided
+            ? { department_id: serviceAssignment.department_id }
+            : {}),
           ...(notesWereProvided ? { notes: serviceAssignment.notes } : {}),
         },
         select: { leader_id: true },
@@ -285,7 +344,8 @@ async function PATCH_handler(
         const taskProjectId = await resolveOnboardingTaskProjectId(tx, {
           workspaceId: access.onboarding.workspace_id,
           companyId: access.onboarding.company_id,
-          companyName: projectContext?.company?.name ?? companyContext?.name ?? "Client",
+          companyName:
+            projectContext?.company?.name ?? companyContext?.name ?? "Client",
           sourceProjectId: access.onboarding.project_id ?? null,
           sourceProjectSpaceId: projectContext?.space_id ?? null,
           ownerId: auth.prismaUser.id,
@@ -337,7 +397,11 @@ async function PATCH_handler(
       const b2bForm = isMarketingB2BFormService(service)
         ? await tx.marketingB2BOnboardingForm.findFirst({
             where: { onboarding_id: id },
-            orderBy: [{ updated_at: "desc" }, { created_at: "desc" }, { id: "asc" }],
+            orderBy: [
+              { updated_at: "desc" },
+              { created_at: "desc" },
+              { id: "asc" },
+            ],
             select: {
               task_id: true,
               checklist_item_id: true,
@@ -345,17 +409,22 @@ async function PATCH_handler(
             },
           })
         : null;
-      const b2cForm = !b2bForm && isMarketingB2CFormService(service)
-        ? await tx.marketingB2COnboardingForm.findFirst({
-            where: { onboarding_id: id },
-            orderBy: [{ updated_at: "desc" }, { created_at: "desc" }, { id: "asc" }],
-            select: {
-              task_id: true,
-              checklist_item_id: true,
-              task: { select: { assignee_id: true } },
-            },
-          })
-        : null;
+      const b2cForm =
+        !b2bForm && isMarketingB2CFormService(service)
+          ? await tx.marketingB2COnboardingForm.findFirst({
+              where: { onboarding_id: id },
+              orderBy: [
+                { updated_at: "desc" },
+                { created_at: "desc" },
+                { id: "asc" },
+              ],
+              select: {
+                task_id: true,
+                checklist_item_id: true,
+                task: { select: { assignee_id: true } },
+              },
+            })
+          : null;
       const form = b2bForm ?? b2cForm;
       if (form && leaderWasProvided) {
         const nextLeaderId = assignment.leader_id;
@@ -392,7 +461,11 @@ async function PATCH_handler(
         where: { onboarding_id: id, department: "Internal Assignment" },
         data: missingLeader
           ? { status: "pending", completed_at: null, completed_by: null }
-          : { status: "complete", completed_at: new Date(), completed_by: auth.prismaUser.id },
+          : {
+              status: "complete",
+              completed_at: new Date(),
+              completed_by: auth.prismaUser.id,
+            },
       });
     }
 
@@ -436,7 +509,8 @@ async function PATCH_handler(
     return { onboarding, notificationTargets };
   });
 
-  if (!result) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!result)
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const { onboarding: updated, notificationTargets } = result;
   await sendOnboardingAssignmentNotifications(notificationTargets);
 
@@ -452,8 +526,16 @@ async function PATCH_handler(
   });
 
   const freshAccess = await loadOnboardingAccess(auth, id);
-  return NextResponse.json(redactOnboardingContracts(updated, Boolean(freshAccess?.canViewPrivateContract)));
+  return NextResponse.json(
+    redactOnboardingContracts(
+      updated,
+      Boolean(freshAccess?.canViewPrivateContract),
+    ),
+  );
 }
 
 export const GET = withErrorReporting("api:onboarding/[id]:GET", GET_handler);
-export const PATCH = withErrorReporting("api:onboarding/[id]:PATCH", PATCH_handler);
+export const PATCH = withErrorReporting(
+  "api:onboarding/[id]:PATCH",
+  PATCH_handler,
+);

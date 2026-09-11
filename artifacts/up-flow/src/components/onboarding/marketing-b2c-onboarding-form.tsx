@@ -201,7 +201,7 @@ type Props = {
 };
 
 export default function MarketingB2COnboardingForm({ taskId, onClose, onUpdate, embedded = false }: Props) {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const [form, setForm] = useState<B2CFormResponse | null>(null);
   const [values, setValues] = useState<Record<FieldKey, string>>(() => cleanValues(undefined));
   const [loading, setLoading] = useState(true);
@@ -402,7 +402,7 @@ export default function MarketingB2COnboardingForm({ taskId, onClose, onUpdate, 
                 <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                   <span>{form.task.assignee?.name ?? t("companyDialog.notAssigned")}</span>
                   <span>{form.task.project?.name ?? t("marketingB2CForm.department")}</span>
-                  {form.completed_at && <span>{t("marketingB2CForm.completedAt", { date: formatDate(form.completed_at) })}</span>}
+                  {form.completed_at && <span>{t("marketingB2CForm.completedAt", { date: formatDate(form.completed_at, language) })}</span>}
                 </div>
               )}
             </div>

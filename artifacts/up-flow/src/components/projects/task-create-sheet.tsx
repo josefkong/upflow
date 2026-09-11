@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   FolderKanban,
-  ImagePlus,
   ListTodo,
   Loader2,
   Settings2,
@@ -16,7 +15,6 @@ import { useLanguage } from "@/components/language-provider";
 import CustomFieldInput from "@/components/projects/custom-field-input";
 import { PriorityPicker, type TaskPriority } from "@/components/projects/priority-ui";
 import TaskAssigneePicker from "@/components/projects/task-assignee-picker";
-import TaskCoverImageControl from "@/components/projects/task-cover-image-control";
 import TaskTemplateFields from "@/components/projects/task-template-fields";
 import BrazilianDateInput from "@/components/ui/brazilian-date-input";
 import { Button } from "@/components/ui/button";
@@ -50,6 +48,8 @@ import type {
   WorkflowStatus,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { isCommercialSystemFlowProject } from "@/lib/commercial-managed-projects";
+import { isFinanceContractMirrorProject } from "@/lib/commercial-contract-mirror";
 
 export interface TaskCreateSheetProps {
   open: boolean;
@@ -94,7 +94,6 @@ export default function TaskCreateSheet({
   const [status, setStatus] = useState<Task["status"]>(defaultStatus);
   const [templateId, setTemplateId] = useState<TaskTemplateId>(defaultTemplateId);
   const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
-  const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null);
   const [fieldValues, setFieldValues] = useState<Record<string, unknown>>(
     initialCustomFieldValues ?? {},
   );
@@ -156,7 +155,6 @@ export default function TaskCreateSheet({
     setStatus(defaultStatus);
     setTemplateId(defaultTemplateId);
     setTemplateValues({});
-    setCoverImageUrl(null);
     setFieldValues(initialCustomFieldValues ?? {});
     setSelectedProjectId(projectId ?? "");
     setProjectContext(null);
@@ -189,7 +187,21 @@ export default function TaskCreateSheet({
         if (!response.ok) throw new Error(t("task.couldNotLoadLists"));
         return response.json() as Promise<{ items?: Project[] }>;
       })
-      .then((data) => setProjects(data.items ?? []))
+      .then((data) =>
+        setProjects(
+          (data.items ?? []).filter(
+            (project) =>
+              !isCommercialSystemFlowProject({
+                projectName: project.name,
+                spaceName: project.space?.name,
+              }) &&
+              !isFinanceContractMirrorProject({
+                projectName: project.name,
+                spaceName: project.space?.name,
+              }),
+          ),
+        ),
+      )
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         logError("task-create-sheet:load-projects", error);
@@ -230,6 +242,20 @@ export default function TaskCreateSheet({
         if (!projectResponse.ok) throw new Error(t("task.contextLoadError"));
         const project = (await projectResponse.json()) as Project;
         setProjectContext(project);
+
+        if (
+          isCommercialSystemFlowProject({
+            projectName: project.name,
+            spaceName: project.space?.name,
+          }) ||
+          isFinanceContractMirrorProject({
+            projectName: project.name,
+            spaceName: project.space?.name,
+          })
+        ) {
+          setContextError(t("task.commercialFlowCreationBlocked"));
+          return;
+        }
 
         if (project.capabilities && !project.capabilities.canContribute) {
           setContextError(t("task.contributorAccessRequired"));
@@ -310,6 +336,21 @@ export default function TaskCreateSheet({
       setAnnouncement(t("task.contributorAccessRequired"));
       return;
     }
+    if (
+      selectedProject &&
+      (isCommercialSystemFlowProject({
+        projectName: selectedProject.name,
+        spaceName: selectedProject.space?.name,
+      }) ||
+        isFinanceContractMirrorProject({
+          projectName: selectedProject.name,
+          spaceName: selectedProject.space?.name,
+        }))
+    ) {
+      setContextError(t("task.commercialFlowCreationBlocked"));
+      setAnnouncement(t("task.commercialFlowCreationBlocked"));
+      return;
+    }
     if (invalid) {
       setAnnouncement(t("task.fixErrors"));
       if (!cleanTitle) titleRef.current?.focus();
@@ -348,7 +389,6 @@ export default function TaskCreateSheet({
           project_id: selectedProjectId,
           assignee_id: assigneeId || null,
           due_date: dueDate || null,
-          cover_image_url: coverImageUrl,
           custom_fields: customFieldEntries,
         }),
       });
@@ -616,23 +656,6 @@ export default function TaskCreateSheet({
                     </Field>
                   </ProgressiveSection>
 
-                  <ProgressiveSection icon={ImagePlus} title={t("task.detailsCover")}>
-                    <TaskCoverImageControl
-                      value={coverImageUrl}
-                      projectId={selectedProjectId || undefined}
-                      disabled={
-                        submitting ||
-                        !selectedProjectId ||
-                        contextLoading ||
-                        contributorAccessDenied
-                      }
-                      compact
-                      onChange={(value) => {
-                        setCoverImageUrl(value);
-                        markDirty();
-                      }}
-                    />
-                  </ProgressiveSection>
                 </div>
 
                 {contextError ? (

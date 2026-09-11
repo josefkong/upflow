@@ -13,19 +13,28 @@ test("defers optional Space and sidebar UI while preserving the existing panel b
   const sidebar = source("src/components/layout/sidebar.tsx");
   const panelData = source("src/components/layout/sidebar/use-panel-data.ts");
   const spacePage = source("src/app/(dashboard)/spaces/[id]/page.tsx");
+  const spaceCache = source("src/lib/space-page-cache.ts");
+  const spaceTree = source("src/components/layout/sidebar/space-tree.tsx");
+  const projectRow = source("src/components/layout/sidebar/project-row.tsx");
+  const projectPage = source("src/app/(dashboard)/projects/[id]/page.tsx");
 
   assert.match(sidebar, /const Panel = dynamic/);
-  assert.match(sidebar, /active=\{panelOpen\}/);
+  assert.match(sidebar, /active=\{desktopSidebarOpen && isDesktopViewport\}/);
   assert.match(panelData, /options: \{ enabled\?: boolean \} = \{\}/);
   assert.match(panelData, /if \(!enabled\) return;/);
   assert.match(panelData, /panelCache\.delete\(storageKeys\.scope\)/);
   assert.match(spacePage, /const SpaceDocsTab = dynamic/);
   assert.match(spacePage, /ssr: false/);
+  assert.match(spacePage, /spacePageCacheKeys/);
+  assert.match(spaceCache, /SPACE_DASHBOARD_LIMIT = 100/);
+  assert.match(spaceTree, /prefetchSpacePage/);
+  assert.match(projectRow, /prefetchProjectPage/);
+  assert.match(projectPage, /projectPageCacheKeys\.fields/);
+  assert.doesNotMatch(spacePage, /department-defaults/);
 });
 
 test("calendar and document indexes request only the data their list views use", () => {
   const calendarPage = source("src/app/(dashboard)/calendar/page.tsx");
-  const taskRoute = source("src/app/api/tasks/route.ts");
   const eventRoute = source("src/app/api/calendar/events/route.ts");
   const eventDetail = source("src/app/api/calendar/events/event-detail.ts");
   const docsRoute = source("src/app/api/docs/route.ts");
@@ -34,10 +43,9 @@ test("calendar and document indexes request only the data their list views use",
   const clientsPage = source("src/app/(dashboard)/clients/page.tsx");
   const [docsListHandler] = docsRoute.split("async function POST_handler");
 
-  assert.match(calendarPage, /new URLSearchParams\(\{ due_from: from, due_to: to \}\)/);
-  assert.match(calendarPage, /\/api\/tasks\?\$\{taskRangeParams\.toString\(\)\}/);
-  assert.match(taskRoute, /const dueFromParam = searchParams\.get\("due_from"\)/);
-  assert.match(taskRoute, /where\.due_date = \{/);
+  assert.doesNotMatch(calendarPage, /\/api\/tasks\?/);
+  assert.match(calendarPage, /isCalendarAppointment/);
+  assert.match(calendarPage, /event\.type !== "task" && event\.type !== "deadline"/);
   assert.match(eventRoute, /select: calendarEventListSelect/);
   assert.match(eventDetail, /export const calendarEventListSelect/);
   assert.match(docsListHandler, /select: \{/);

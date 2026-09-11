@@ -30,6 +30,9 @@ import {
   X,
 } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
+import { formatBrazilianCnpj, isBrazilianCnpj } from "@/lib/brazilian-cnpj";
+import { formatBrazilianMobile, isBrazilianMobile } from "@/lib/brazilian-mobile";
+import { COMMERCIAL_CONTRACT_SERVICES } from "@/lib/commercial-contract";
 import { cn } from "@/lib/utils";
 import type { Department, SalesChannel, TeamMember } from "@/lib/types";
 
@@ -109,6 +112,8 @@ const SALES_CHANNEL_OPTIONS: Array<{ value: SalesChannel; labelKey: string }> = 
 const SERVICE_OPTIONS: SelectOption[] = [
   { value: "Meta Ads", labelKey: "companyDialog.service.metaAds" },
   { value: "Google Ads", labelKey: "companyDialog.service.googleAds" },
+  { value: "TikTok Ads", labelKey: "companyDialog.service.tiktokAds" },
+  { value: "Pinterest Ads", labelKey: "companyDialog.service.pinterestAds" },
   { value: "E-Commerce", labelKey: "companyDialog.service.ecommerce" },
   { value: "Vesti", labelKey: "companyDialog.service.vesti" },
   { value: "Nuvemshop", labelKey: "companyDialog.service.nuvemshop" },
@@ -124,9 +129,53 @@ const SERVICE_OPTIONS: SelectOption[] = [
   { value: "Email marketing", labelKey: "companyDialog.service.emailMarketing" },
 ];
 
+const COMPLETE_CLIENT_SERVICE_LABELS: Record<
+  (typeof COMMERCIAL_CONTRACT_SERVICES)[number],
+  string
+> = {
+  "Meta Ads": "companyDialog.service.metaAds",
+  "Google Ads": "companyDialog.service.googleAds",
+  "TikTok Ads": "companyDialog.service.tiktokAds",
+  "Pinterest Ads": "companyDialog.service.pinterestAds",
+  "Social Media": "companyDialog.service.socialMedia",
+  Creative: "companyDialog.service.creative",
+  Video: "companyDialog.service.video",
+  Website: "companyDialog.service.website",
+  "E-Commerce": "companyDialog.service.ecommerce",
+  SEO: "companyDialog.service.seo",
+  "Email Marketing": "companyDialog.service.emailMarketing",
+  "Tracking/Analytics": "companyDialog.service.trackingAnalytics",
+  "Influencers / UGC": "companyDialog.service.influencersUgc",
+  "Up Zero": "companyDialog.service.upZero",
+  "Up Motion": "companyDialog.service.upMotion",
+  "Implantação de IA": "companyDialog.service.aiImplementation",
+  Suporte: "companyDialog.service.support",
+};
+
+const COMPLETE_CLIENT_SERVICE_OPTIONS: SelectOption[] =
+  COMMERCIAL_CONTRACT_SERVICES.map((service) => ({
+    value: service,
+    labelKey: COMPLETE_CLIENT_SERVICE_LABELS[service],
+  }));
+
 const BRAND_TYPE_OPTIONS: SelectOption[] = [
   { value: "B2B", labelKey: "companyDialog.brandType.b2b" },
   { value: "B2C", labelKey: "companyDialog.brandType.b2c" },
+  { value: "Ambos", labelKey: "commercialLead.companyType.both" },
+];
+
+const COMPLETE_CLIENT_PLAN_OPTIONS: SelectOption[] = [
+  { value: "Plano Grupo UP — Starter", labelKey: "companyDialog.completePlan.groupUpStarter" },
+  { value: "Plano Grupo UP — Growth", labelKey: "companyDialog.completePlan.groupUpGrowth" },
+  { value: "Plano UP Zero — Essencial", labelKey: "companyDialog.completePlan.upZeroEssential" },
+  { value: "Plano UP Zero — Pro", labelKey: "companyDialog.completePlan.upZeroPro" },
+  { value: "Plano UP Zero — Elite", labelKey: "companyDialog.completePlan.upZeroElite" },
+  { value: "Plano Grupo UP — Starter + Plano UP Zero — Essencial", labelKey: "companyDialog.completePlan.starterEssential" },
+  { value: "Plano Grupo UP — Starter + Plano UP Zero — Pro", labelKey: "companyDialog.completePlan.starterPro" },
+  { value: "Plano Grupo UP — Starter + Plano UP Zero — Elite", labelKey: "companyDialog.completePlan.starterElite" },
+  { value: "Plano Grupo UP — Growth + Plano UP Zero — Essencial", labelKey: "companyDialog.completePlan.growthEssential" },
+  { value: "Plano Grupo UP — Growth + Plano UP Zero — Pro", labelKey: "companyDialog.completePlan.growthPro" },
+  { value: "Plano Grupo UP — Growth + Plano UP Zero — Elite", labelKey: "companyDialog.completePlan.growthElite" },
 ];
 
 const ONBOARDING_PLAN_OPTIONS: SelectOption[] = [
@@ -160,7 +209,7 @@ async function readApiError(res: Response, fallback: string) {
 }
 
 function SelectIcon({ className }: { className?: string }) {
-  return <ChevronDown className={cn("pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground dark:text-blue-100/60", className)} />;
+  return <ChevronDown className={cn("upflow-select-chevron pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground dark:text-blue-100/60", className)} />;
 }
 
 function getSelectValue(value: string, options: SelectOption[], custom: boolean) {
@@ -212,15 +261,21 @@ export default function CreateCompanyDialog({
   onClose,
   onCreated,
   mode = "company",
+  financialsVisible = false,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated?: (c: Company) => void;
-  mode?: "company" | "onboarding";
+  mode?: "company" | "onboarding" | "complete";
+  financialsVisible?: boolean;
 }) {
   const { t } = useLanguage();
   const onboardingMode = mode === "onboarding";
+  const completeClientMode = mode === "complete";
+  const operationalRegistrationMode = onboardingMode || completeClientMode;
   const [name, setName] = useState("");
+  const [legalName, setLegalName] = useState("");
+  const [cnpj, setCnpj] = useState("");
   const [domain, setDomain] = useState("");
   const [industry, setIndustry] = useState("");
   const [salesChannel, setSalesChannel] = useState<SalesChannel | "">("");
@@ -313,9 +368,24 @@ export default function CreateCompanyDialog({
 
   if (!open) return null;
 
-  const dialogTitle = onboardingMode ? t("companyDialog.onboardingTitle") : t("companyDialog.standaloneTitle");
-  const dialogSubtitle = onboardingMode ? t("companyDialog.onboardingSubtitle") : t("companyDialog.standaloneSubtitle");
-  const submitLabel = onboardingMode ? t("companyDialog.createAndStart") : t("companyDialog.createStandalone");
+  const dialogTitle = onboardingMode
+    ? t("companyDialog.onboardingTitle")
+    : completeClientMode
+      ? t("companyDialog.completeTitle")
+      : t("companyDialog.standaloneTitle");
+  const dialogSubtitle = onboardingMode
+    ? t("companyDialog.onboardingSubtitle")
+    : completeClientMode
+      ? t("companyDialog.completeSubtitle")
+      : t("companyDialog.standaloneSubtitle");
+  const submitLabel = onboardingMode
+    ? t("companyDialog.createAndStart")
+    : completeClientMode
+      ? t("companyDialog.createComplete")
+      : t("companyDialog.createStandalone");
+  const serviceOptions = completeClientMode
+    ? COMPLETE_CLIENT_SERVICE_OPTIONS
+    : SERVICE_OPTIONS;
 
   const addService = (value: string) => {
     const service = value.trim();
@@ -331,6 +401,8 @@ export default function CreateCompanyDialog({
 
   const reset = () => {
     setName("");
+    setLegalName("");
+    setCnpj("");
     setDomain("");
     setIndustry("");
     setSalesChannel("");
@@ -372,9 +444,43 @@ export default function CreateCompanyDialog({
       toast.error(t("companyDialog.expectedStartRequired"));
       return;
     }
+    if (completeClientMode) {
+      if (
+        !legalName.trim() ||
+        !cnpj.trim() ||
+        !serviceType.trim() ||
+        !planName.trim() ||
+        !expectedStartDate ||
+        !departmentId ||
+        !assigneeId ||
+        !contactName.trim() ||
+        !contactEmail.trim() ||
+        !contactPhone.trim() ||
+        includedServices.length === 0
+      ) {
+        toast.error(t("companyDialog.completeRequired"));
+        return;
+      }
+      if (!isBrazilianCnpj(cnpj)) {
+        toast.error(t("companyDialog.cnpjInvalid"));
+        return;
+      }
+      if (!isBrazilianMobile(contactPhone)) {
+        toast.error(t("companyDialog.whatsappInvalid"));
+        return;
+      }
+    }
     const parsedContractValue = parseCurrencyValue(contractValue);
     if (parsedContractValue !== null && !Number.isFinite(parsedContractValue)) {
       toast.error(t("companyDialog.contractValueInvalid"));
+      return;
+    }
+    if (
+      completeClientMode &&
+      financialsVisible &&
+      (parsedContractValue === null || parsedContractValue <= 0)
+    ) {
+      toast.error(t("companyDialog.contractValueRequired"));
       return;
     }
     setSubmitting(true);
@@ -395,13 +501,13 @@ export default function CreateCompanyDialog({
         included_services: includedServices,
         notes: notes.trim() || null,
         description: notes.trim() || null,
-        owner_id: onboardingMode ? assigneeId || null : null,
+        owner_id: operationalRegistrationMode ? assigneeId || null : null,
         contact_name: contactName.trim() || null,
         contact_email: contactEmail.trim() || null,
         contact_phone: contactPhone.trim() || null,
         contact_role: contactRole.trim() || null,
-        responsible_department_id: onboardingMode ? departmentId || null : null,
-        responsible_department_name: onboardingMode ? selectedDepartmentName || null : null,
+        responsible_department_id: operationalRegistrationMode ? departmentId || null : null,
+        responsible_department_name: operationalRegistrationMode ? selectedDepartmentName || null : null,
       };
       const res = await fetch(onboardingMode ? "/api/onboarding/client-wizard" : "/api/companies", {
         method: "POST",
@@ -420,6 +526,29 @@ export default function CreateCompanyDialog({
                 ...basePayload,
                 // Creating a client is deliberately separate from starting its onboarding workflow.
                 start_onboarding: false,
+                complete_registration: completeClientMode,
+                legal_name: completeClientMode ? legalName.trim() : null,
+                cnpj: completeClientMode ? formatBrazilianCnpj(cnpj) : null,
+                contract_start_date: completeClientMode
+                  ? expectedStartDate
+                  : null,
+                contract_value:
+                  completeClientMode && financialsVisible
+                    ? parsedContractValue
+                    : null,
+                main_contact_email: completeClientMode
+                  ? contactEmail.trim()
+                  : null,
+                billing_email: completeClientMode
+                  ? contactEmail.trim()
+                  : null,
+                phone: completeClientMode
+                  ? formatBrazilianMobile(contactPhone)
+                  : null,
+                whatsapp: completeClientMode
+                  ? formatBrazilianMobile(contactPhone)
+                  : null,
+                commercial_status: completeClientMode ? "active" : null,
               },
         ),
       });
@@ -443,7 +572,14 @@ export default function CreateCompanyDialog({
         });
       } else {
         const company = (await res.json()) as Company;
-        toast.success(t("companyDialog.createdWithoutOnboarding", { name: company.name }));
+        toast.success(
+          t(
+            completeClientMode
+              ? "companyDialog.completeCreated"
+              : "companyDialog.createdWithoutOnboarding",
+            { name: company.name },
+          ),
+        );
         onCreated?.(company);
       }
       reset();
@@ -517,13 +653,13 @@ export default function CreateCompanyDialog({
   };
 
   const fieldClass =
-    "h-16 w-full rounded-2xl border border-border bg-background pl-14 pr-4 text-base text-foreground shadow-sm outline-none transition placeholder:text-muted-foreground focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-blue-200/[0.25] dark:bg-[#12192a]/[0.86] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:placeholder:text-blue-100/[0.55] dark:focus:ring-blue-500/70 dark:focus:shadow-[0_0_24px_rgba(59,130,246,0.32)]";
+    "h-16 w-full rounded-2xl border border-border bg-background pl-16 pr-4 text-base text-foreground shadow-sm outline-none transition placeholder:text-muted-foreground focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-blue-200/[0.25] dark:bg-[#12192a]/[0.86] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:placeholder:text-blue-100/[0.55] dark:focus:ring-blue-500/70 dark:focus:shadow-[0_0_24px_rgba(59,130,246,0.32)]";
   const textareaClass =
-    "min-h-28 w-full rounded-2xl border border-border bg-background px-14 py-4 text-base text-foreground shadow-sm outline-none transition placeholder:text-muted-foreground focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-blue-200/[0.25] dark:bg-[#12192a]/[0.86] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:placeholder:text-blue-100/[0.55] dark:focus:ring-blue-500/70 dark:focus:shadow-[0_0_24px_rgba(59,130,246,0.32)]";
+    "min-h-28 w-full rounded-2xl border border-border bg-background py-4 pl-16 pr-14 text-base text-foreground shadow-sm outline-none transition placeholder:text-muted-foreground focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-blue-200/[0.25] dark:bg-[#12192a]/[0.86] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:placeholder:text-blue-100/[0.55] dark:focus:ring-blue-500/70 dark:focus:shadow-[0_0_24px_rgba(59,130,246,0.32)]";
 
   if (onboardingMode) {
     const onboardingInputClass =
-      "h-14 w-full rounded-xl border border-border bg-background px-14 text-base text-foreground outline-none transition placeholder:text-muted-foreground focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-blue-200/[0.25] dark:bg-[#08142a]/[0.72] dark:text-white dark:placeholder:text-blue-100/[0.55] dark:focus:border-blue-300 dark:focus:ring-blue-500/75 dark:focus:shadow-[0_0_28px_rgba(59,130,246,0.34)]";
+      "h-14 w-full rounded-xl border border-border bg-background pl-16 pr-14 text-base text-foreground outline-none transition placeholder:text-muted-foreground focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-blue-200/[0.25] dark:bg-[#08142a]/[0.72] dark:text-white dark:placeholder:text-blue-100/[0.55] dark:focus:border-blue-300 dark:focus:ring-blue-500/75 dark:focus:shadow-[0_0_28px_rgba(59,130,246,0.34)]";
     const onboardingSelectClass = cn(onboardingInputClass, "appearance-none pr-12");
     const availableServices = ONBOARDING_SERVICE_OPTIONS.filter((option) => !includedServices.includes(option.value));
 
@@ -799,6 +935,38 @@ export default function CreateCompanyDialog({
             </div>
           </Field>
 
+          {completeClientMode ? (
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Field label={t("companyDialog.legalName")} required>
+                <div className="relative">
+                  <FieldIcon icon={<Building2 className="h-5 w-5" />} />
+                  <input
+                    required
+                    value={legalName}
+                    onChange={(event) => setLegalName(event.target.value)}
+                    placeholder={t("companyDialog.legalNamePlaceholder")}
+                    className={fieldClass}
+                  />
+                </div>
+              </Field>
+              <Field label={t("companyDialog.cnpj")} required>
+                <div className="relative">
+                  <FieldIcon icon={<NotebookText className="h-5 w-5" />} />
+                  <input
+                    required
+                    inputMode="numeric"
+                    value={cnpj}
+                    onChange={(event) =>
+                      setCnpj(formatBrazilianCnpj(event.target.value))
+                    }
+                    placeholder="00.000.000/0000-00"
+                    className={fieldClass}
+                  />
+                </div>
+              </Field>
+            </div>
+          ) : null}
+
           <div className="grid gap-6 lg:grid-cols-2">
             <Field label={t("companyDialog.domain")}>
               <div className="relative">
@@ -842,26 +1010,54 @@ export default function CreateCompanyDialog({
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
-            <Field label={t("companyDialog.serviceType")}>
+            <Field
+              label={
+                completeClientMode
+                  ? t("companyDialog.companyType")
+                  : t("companyDialog.serviceType")
+              }
+              required={completeClientMode}
+            >
               <div className="relative">
                 <FieldIcon icon={<Megaphone className="h-5 w-5" />} />
                 <select
-                  value={getSelectValue(serviceType, SERVICE_TYPE_OPTIONS, customServiceType)}
+                  required={completeClientMode}
+                  value={
+                    completeClientMode
+                      ? serviceType
+                      : getSelectValue(
+                          serviceType,
+                          SERVICE_TYPE_OPTIONS,
+                          customServiceType,
+                        )
+                  }
                   onChange={(e) => {
+                    if (completeClientMode) {
+                      setCustomServiceType(false);
+                      setServiceType(e.target.value);
+                      return;
+                    }
                     const isCustom = e.target.value === "Other";
                     setCustomServiceType(isCustom);
                     setServiceType(isCustom ? "" : e.target.value);
                   }}
                   className={cn(fieldClass, "appearance-none")}
                 >
-                  <option value="">{t("companyDialog.notSet")}</option>
-                  {SERVICE_TYPE_OPTIONS.map((option) => (
+                  <option value="">
+                    {completeClientMode
+                      ? t("companyDialog.brandTypePlaceholder")
+                      : t("companyDialog.notSet")}
+                  </option>
+                  {(completeClientMode
+                    ? BRAND_TYPE_OPTIONS
+                    : SERVICE_TYPE_OPTIONS
+                  ).map((option) => (
                     <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
                   ))}
                 </select>
                 <SelectIcon />
               </div>
-              {customServiceType && (
+              {customServiceType && !completeClientMode && (
                 <input
                   value={serviceType}
                   onChange={(e) => setServiceType(e.target.value)}
@@ -870,26 +1066,43 @@ export default function CreateCompanyDialog({
                 />
               )}
             </Field>
-            <Field label={t("companyDialog.plan")}>
+            <Field label={t("companyDialog.plan")} required={completeClientMode}>
               <div className="relative">
                 <FieldIcon icon={<TrendingUp className="h-5 w-5" />} />
                 <select
-                  value={getSelectValue(planName, PLAN_OPTIONS, customPlanName)}
+                  required={completeClientMode}
+                  value={
+                    completeClientMode
+                      ? planName
+                      : getSelectValue(planName, PLAN_OPTIONS, customPlanName)
+                  }
                   onChange={(e) => {
+                    if (completeClientMode) {
+                      setCustomPlanName(false);
+                      setPlanName(e.target.value);
+                      return;
+                    }
                     const isCustom = e.target.value === "Other";
                     setCustomPlanName(isCustom);
                     setPlanName(isCustom ? "" : e.target.value);
                   }}
                   className={cn(fieldClass, "appearance-none")}
                 >
-                  <option value="">{t("companyDialog.notSet")}</option>
-                  {PLAN_OPTIONS.map((option) => (
+                  <option value="">
+                    {completeClientMode
+                      ? t("companyDialog.planPlaceholder")
+                      : t("companyDialog.notSet")}
+                  </option>
+                  {(completeClientMode
+                    ? COMPLETE_CLIENT_PLAN_OPTIONS
+                    : PLAN_OPTIONS
+                  ).map((option) => (
                     <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
                   ))}
                 </select>
                 <SelectIcon />
               </div>
-              {customPlanName && (
+              {customPlanName && !completeClientMode && (
                 <input
                   value={planName}
                   onChange={(e) => setPlanName(e.target.value)}
@@ -935,7 +1148,7 @@ export default function CreateCompanyDialog({
             </Field>
           </div>
 
-          {onboardingMode && (
+          {operationalRegistrationMode && (
             <div className="grid gap-6 lg:grid-cols-2">
               <Field label={t("companyDialog.expectedStart")} required>
                 <div className="relative">
@@ -948,29 +1161,43 @@ export default function CreateCompanyDialog({
                   />
                 </div>
               </Field>
-              <Field label={t("companyDialog.contractValue")}>
-                <div className="relative">
-                  <FieldIcon icon={<DollarSign className="h-5 w-5" />} />
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={contractValue}
-                    onChange={(e) => setContractValue(e.target.value)}
-                    placeholder={t("companyDialog.contractValuePlaceholder")}
-                    className={fieldClass}
-                  />
+              {onboardingMode || financialsVisible ? (
+                <Field
+                  label={t("companyDialog.contractValue")}
+                  required={completeClientMode}
+                >
+                  <div className="relative">
+                    <FieldIcon icon={<DollarSign className="h-5 w-5" />} />
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      required={completeClientMode}
+                      value={contractValue}
+                      onChange={(e) => setContractValue(e.target.value)}
+                      placeholder={t("companyDialog.contractValuePlaceholder")}
+                      className={fieldClass}
+                    />
+                  </div>
+                </Field>
+              ) : (
+                <div className="flex min-h-16 items-center rounded-2xl border border-border bg-muted/30 px-5 text-sm text-muted-foreground">
+                  {t("companyDialog.financialRestricted")}
                 </div>
-              </Field>
+              )}
             </div>
           )}
 
-          {onboardingMode && (
+          {operationalRegistrationMode && (
             <div className="grid gap-6 lg:grid-cols-2">
-              <Field label={t("companyDialog.responsibleDepartment")}>
+              <Field
+                label={t("companyDialog.responsibleDepartment")}
+                required={completeClientMode}
+              >
                 <div className="relative">
                   <FieldIcon icon={<Users className="h-5 w-5" />} />
                   <select
+                    required={completeClientMode}
                     value={departmentId}
                     onChange={(e) => setDepartmentId(e.target.value)}
                     className={cn(fieldClass, "appearance-none")}
@@ -984,10 +1211,14 @@ export default function CreateCompanyDialog({
                   <SelectIcon />
                 </div>
               </Field>
-              <Field label={t("companyDialog.assigneeOwner")}>
+              <Field
+                label={t("companyDialog.assigneeOwner")}
+                required={completeClientMode}
+              >
                 <div className="relative">
                   <FieldIcon icon={<UserRound className="h-5 w-5" />} />
                   <select
+                    required={completeClientMode}
                     value={assigneeId}
                     onChange={(e) => setAssigneeId(e.target.value)}
                     className={cn(fieldClass, "appearance-none")}
@@ -1005,10 +1236,11 @@ export default function CreateCompanyDialog({
           )}
 
           <div className="grid gap-6 lg:grid-cols-3">
-            <Field label={t("companyDialog.clientContact")}>
+            <Field label={t("companyDialog.clientContact")} required={completeClientMode}>
               <div className="relative">
                 <FieldIcon icon={<UserRound className="h-5 w-5" />} />
                 <input
+                  required={completeClientMode}
                   value={contactName}
                   onChange={(e) => setContactName(e.target.value)}
                   placeholder={t("companyDialog.contactNamePlaceholder")}
@@ -1016,11 +1248,12 @@ export default function CreateCompanyDialog({
                 />
               </div>
             </Field>
-            <Field label={t("companyDialog.email")}>
+            <Field label={t("companyDialog.email")} required={completeClientMode}>
               <div className="relative">
                 <FieldIcon icon={<Mail className="h-5 w-5" />} />
                 <input
                   type="email"
+                  required={completeClientMode}
                   value={contactEmail}
                   onChange={(e) => setContactEmail(e.target.value)}
                   placeholder={t("companyDialog.emailPlaceholder")}
@@ -1028,12 +1261,19 @@ export default function CreateCompanyDialog({
                 />
               </div>
             </Field>
-            <Field label={t("companyDialog.phone")}>
+            <Field label={t("companyDialog.phone")} required={completeClientMode}>
               <div className="relative">
                 <FieldIcon icon={<Phone className="h-5 w-5" />} />
                 <input
+                  required={completeClientMode}
                   value={contactPhone}
-                  onChange={(e) => setContactPhone(e.target.value)}
+                  onChange={(e) =>
+                    setContactPhone(
+                      completeClientMode
+                        ? formatBrazilianMobile(e.target.value)
+                        : e.target.value,
+                    )
+                  }
                   placeholder={t("companyDialog.phonePlaceholder")}
                   className={fieldClass}
                 />
@@ -1053,9 +1293,18 @@ export default function CreateCompanyDialog({
             </div>
           </Field>
 
-          <Field label={t("companyDialog.includedServices")}>
+          <Field
+            label={t("companyDialog.includedServices")}
+            required={completeClientMode}
+          >
             <div className="rounded-2xl border border-border bg-muted/30 p-4 dark:border-blue-200/[0.25] dark:bg-[#12192a]/[0.86]">
-              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+              <div
+                className={cn(
+                  "grid gap-3",
+                  !completeClientMode &&
+                    "lg:grid-cols-[minmax(0,1fr)_auto]",
+                )}
+              >
                 <div className="relative">
                   <FieldIcon icon={<Sparkles className="h-5 w-5" />} />
                   <select
@@ -1067,24 +1316,28 @@ export default function CreateCompanyDialog({
                     className={cn(fieldClass, "h-14 appearance-none")}
                   >
                     <option value="">{t("companyDialog.addServicePlaceholder")}</option>
-                    {SERVICE_OPTIONS.filter((option) => !includedServices.includes(option.value)).map((option) => (
+                    {serviceOptions.filter((option) => !includedServices.includes(option.value)).map((option) => (
                       <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
                     ))}
-                    <option value="custom">{t("companyDialog.customServiceOption")}</option>
+                    {!completeClientMode ? (
+                      <option value="custom">{t("companyDialog.customServiceOption")}</option>
+                    ) : null}
                   </select>
                   <SelectIcon />
                 </div>
-                <button
-                  type="button"
-                  onClick={() => addService(customService)}
-                  disabled={!customService.trim()}
-                  className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl border border-blue-400/[0.35] bg-blue-500/10 px-5 text-sm font-semibold text-blue-700 transition hover:bg-blue-500/[0.15] disabled:cursor-not-allowed disabled:opacity-40 dark:text-blue-100 dark:hover:bg-blue-500/20"
-                >
-                  <Plus className="h-4 w-4" />
-                  {t("common.add")}
-                </button>
+                {!completeClientMode ? (
+                  <button
+                    type="button"
+                    onClick={() => addService(customService)}
+                    disabled={!customService.trim()}
+                    className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl border border-blue-400/[0.35] bg-blue-500/10 px-5 text-sm font-semibold text-blue-700 transition hover:bg-blue-500/[0.15] disabled:cursor-not-allowed disabled:opacity-40 dark:text-blue-100 dark:hover:bg-blue-500/20"
+                  >
+                    <Plus className="h-4 w-4" />
+                    {t("common.add")}
+                  </button>
+                ) : null}
               </div>
-              {servicePick === "custom" && (
+              {servicePick === "custom" && !completeClientMode ? (
                 <input
                   value={customService}
                   onChange={(e) => setCustomService(e.target.value)}
@@ -1097,18 +1350,18 @@ export default function CreateCompanyDialog({
                   placeholder={t("companyDialog.customServicePlaceholder")}
                   className="mt-3 h-12 w-full rounded-xl border border-border bg-background px-4 text-sm text-foreground outline-none focus:border-blue-400 dark:border-blue-200/[0.25] dark:bg-[#0d1424]"
                 />
-              )}
+              ) : null}
               <div className="mt-4 flex flex-wrap gap-2">
                 {includedServices.map((service) => (
                   <span
                     key={service}
                     className="inline-flex items-center gap-2 rounded-full border border-blue-400/30 bg-blue-500/10 px-3 py-1.5 text-sm text-blue-700 dark:border-blue-400/25 dark:text-blue-100"
                   >
-                    {optionLabel(service, SERVICE_OPTIONS, t)}
+                    {optionLabel(service, serviceOptions, t)}
                     <button
                       type="button"
                       onClick={() => removeService(service)}
-                      aria-label={t("companyDialog.removeService", { service: optionLabel(service, SERVICE_OPTIONS, t) })}
+                      aria-label={t("companyDialog.removeService", { service: optionLabel(service, serviceOptions, t) })}
                       className="rounded-full text-blue-700/60 hover:text-foreground dark:text-blue-100/60 dark:hover:text-white"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -1146,7 +1399,25 @@ export default function CreateCompanyDialog({
           </button>
           <button
             type="submit"
-            disabled={submitting || !name.trim() || (onboardingMode && (!expectedStartDate || includedServices.length === 0))}
+            disabled={
+              submitting ||
+              !name.trim() ||
+              (onboardingMode &&
+                (!expectedStartDate || includedServices.length === 0)) ||
+              (completeClientMode &&
+                (!legalName.trim() ||
+                  !cnpj.trim() ||
+                  !serviceType.trim() ||
+                  !planName.trim() ||
+                  !expectedStartDate ||
+                  !departmentId ||
+                  !assigneeId ||
+                  !contactName.trim() ||
+                  !contactEmail.trim() ||
+                  !contactPhone.trim() ||
+                  includedServices.length === 0 ||
+                  (financialsVisible && !contractValue.trim())))
+            }
             className="inline-flex h-16 items-center justify-center gap-3 rounded-2xl border border-blue-300/40 bg-primary text-base font-bold text-primary-foreground shadow-[0_0_34px_rgba(59,130,246,0.38),inset_0_1px_0_rgba(255,255,255,0.18)] transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-[0.45]"
           >
             <Sparkles className="h-5 w-5" />

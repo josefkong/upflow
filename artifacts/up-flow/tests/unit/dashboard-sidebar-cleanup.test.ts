@@ -11,9 +11,13 @@ function read(rel: string) {
 
 test("home dashboard defaults to a focused today and risks command center", () => {
   const page = read("src/app/(dashboard)/page.tsx");
-  const agencyPanel = read("src/components/dashboard/agency-operations-panel.tsx");
+  const agencyPanel = read(
+    "src/components/dashboard/agency-operations-panel.tsx",
+  );
   const teamTimeline = read("src/components/dashboard/team-timeline.tsx");
-  const taskDetailModal = read("src/components/dashboard/task-detail-modal.tsx");
+  const taskDetailModal = read(
+    "src/components/dashboard/task-detail-modal.tsx",
+  );
 
   assert.match(page, /t\("dashboard\.commandCenter"\)/);
   assert.match(page, /TodayFocusPanel/);
@@ -30,12 +34,21 @@ test("home dashboard defaults to a focused today and risks command center", () =
   assert.match(teamTimeline, /startLabel/);
   assert.match(teamTimeline, /aria-label=\{tooltip\}/);
   assert.match(teamTimeline, /const TIMELINE_PREVIEW_LIMIT = 5/);
-  assert.match(teamTimeline, /const \[showAllPeople, setShowAllPeople\] = useState\(false\)/);
-  assert.match(teamTimeline, /showAllPeople\s*\?\s*users\s*:\s*users\.slice\(0, TIMELINE_PREVIEW_LIMIT\)/s);
+  assert.match(
+    teamTimeline,
+    /const \[showAllPeople, setShowAllPeople\] = useState\(false\)/,
+  );
+  assert.match(
+    teamTimeline,
+    /showAllPeople\s*\?\s*users\s*:\s*users\.slice\(0, TIMELINE_PREVIEW_LIMIT\)/s,
+  );
   assert.match(teamTimeline, /timeline\.peoplePreviewCount/);
   assert.match(teamTimeline, /data-testid="team-timeline-view-all"/);
   assert.match(teamTimeline, /aria-expanded=\{showAllPeople\}/);
-  assert.match(teamTimeline, /onClick=\{\(\) => setShowAllPeople\(\(expanded\) => !expanded\)\}/);
+  assert.match(
+    teamTimeline,
+    /onClick=\{\(\) => setShowAllPeople\(\(expanded\) => !expanded\)\}/,
+  );
   assert.match(teamTimeline, /data-testid="team-timeline-row"/);
   assert.match(teamTimeline, /timeline\.showLess/);
   assert.doesNotMatch(teamTimeline, /fmtH\(b\.start\)/);
@@ -54,7 +67,7 @@ test("home dashboard defaults to a focused today and risks command center", () =
   assert.match(taskDetailModal, /t\("task\.deleteTask"\)/);
 });
 
-test("desktop sidebar fully hides and exposes a focused restore control", () => {
+test("desktop sidebar collapses to an icon rail and keeps its toggle focused", () => {
   const sidebar = read("src/components/layout/sidebar.tsx");
   const layout = read("src/app/(dashboard)/layout.tsx");
   const rail = read("src/components/layout/sidebar/rail.tsx");
@@ -64,7 +77,7 @@ test("desktop sidebar fully hides and exposes a focused restore control", () => 
   assert.match(layout, /import \{ cookies \} from "next\/headers"/);
   assert.match(
     layout,
-    /const DESKTOP_SIDEBAR_KEY = "upflow\.sidebar\.desktopOpen\.v1"/,
+    /const DESKTOP_SIDEBAR_KEY = "upflow\.sidebar\.desktopOpen\.v2"/,
   );
   assert.match(
     layout,
@@ -81,18 +94,17 @@ test("desktop sidebar fully hides and exposes a focused restore control", () => 
   assert.match(sidebar, /initialDesktopSidebarOpen: boolean/);
   assert.match(
     sidebar,
-    /const DESKTOP_SIDEBAR_KEY = "upflow\.sidebar\.desktopOpen\.v1"/,
+    /const DESKTOP_SIDEBAR_KEY = "upflow\.sidebar\.desktopOpen\.v2"/,
   );
   assert.match(
     sidebar,
-    /const \[desktopSidebarOpen, setDesktopSidebarOpen\]\s*=\s*useState\(initialDesktopSidebarOpen\)/,
+    /const \[desktopSidebarOpen, setDesktopSidebarOpen\]\s*=\s*useState\(\s*initialDesktopSidebarOpen,?\s*\)/,
   );
   assert.match(sidebar, /setDesktopSidebarOpen\(false\)/);
-  assert.match(sidebar, /setDesktopSidebarOpen\(true\)/);
-  assert.match(sidebar, /desktopRestoreRef\.current\?\.focus\(\)/);
-  assert.match(sidebar, /desktopCloseRef\.current\?\.focus\(\)/);
+  assert.match(sidebar, /const nextOpen = !open/);
+  assert.match(sidebar, /desktopToggleRef\.current\?\.focus\(\)/);
   assert.match(sidebar, /data-testid="desktop-sidebar"/);
-  assert.match(sidebar, /data-testid="desktop-sidebar-restore"/);
+  assert.doesNotMatch(sidebar, /data-testid="desktop-sidebar-restore"/);
   assert.match(sidebar, /onRequestClose=\{closeDesktopSidebar\}/);
   assert.match(
     sidebar,
@@ -101,34 +113,48 @@ test("desktop sidebar fully hides and exposes a focused restore control", () => 
   assert.match(sidebar, /document\.cookie\s*=/);
   assert.match(sidebar, /SameSite=Lax/);
   assert.match(sidebar, /window\.matchMedia\("\(min-width: 768px\)"\)/);
-  assert.match(
-    sidebar,
-    /active=\{desktopSidebarOpen && isDesktopViewport\}/,
-  );
+  assert.match(sidebar, /active=\{desktopSidebarOpen && isDesktopViewport\}/);
+  assert.match(sidebar, /desktopSidebarOpen \? "w-\[272px\]" : "w-\[64px\]"/);
+  assert.match(sidebar, /panelId: "desktop-sidebar-panel"/);
+  assert.match(sidebar, /id="desktop-sidebar-panel"/);
   assert.match(sidebar, /aria-hidden=\{!desktopSidebarOpen\}/);
   assert.match(sidebar, /inert=\{desktopSidebarOpen \? undefined : true\}/);
-  assert.match(sidebar, /aria-label=\{t\("sidebar\.show"\)\}/);
-  assert.match(sidebar, /aria-controls="desktop-sidebar"/);
-  assert.match(sidebar, /aria-expanded=\{false\}/);
-  assert.match(sidebar, /const \[mobileOpen, setMobileOpen\] = useState\(false\)/);
-  assert.match(sidebar, /showPanelToggle: false/);
+  assert.match(
+    sidebar,
+    /const \[mobileOpen, setMobileOpen\] = useState\(false\)/,
+  );
+  assert.match(sidebar, /w-\[min\(100vw,272px\)\]/);
+  assert.match(sidebar, /closeButtonRef=\{mobileCloseRef\}/);
+  assert.match(sidebar, /closeButtonLabel=\{t\("sidebar\.closeNavigation"\)\}/);
+  assert.doesNotMatch(
+    sidebar,
+    /renderRail\(closeMobileNavigationAfterNavigate/,
+  );
+  assert.match(panel, /closeButtonLabel\?: string/);
+  assert.match(panel, /closeButtonLabel \?\? t\("sidebar\.hide"\)/);
   assert.match(
     sidebar,
     /const lastNavigationFocusRef = useRef<"mobile" \| "desktop" \| null>\(null\)/,
   );
-  assert.match(sidebar, /document\.addEventListener\("focusin", rememberFocus\)/);
+  assert.match(
+    sidebar,
+    /document\.addEventListener\("focusin", rememberFocus\)/,
+  );
   assert.match(
     sidebar,
     /document\.addEventListener\("pointerdown", rememberPointer, true\)/,
   );
-  assert.match(sidebar, /document\.removeEventListener\("focusin", rememberFocus\)/);
+  assert.match(
+    sidebar,
+    /document\.removeEventListener\("focusin", rememberFocus\)/,
+  );
   assert.match(
     sidebar,
     /document\.removeEventListener\("pointerdown", rememberPointer, true\)/,
   );
   assert.match(
     sidebar,
-    /if \(mobileOpen \|\| mobileNavigationFocused\) \{\s*window\.requestAnimationFrame\(\(\) => \{\s*lastNavigationFocusRef\.current = null;\s*const desktopControl = desktopSidebarOpen\s*\? desktopCloseRef\.current\s*:\s*desktopRestoreRef\.current/s,
+    /if \(mobileOpen \|\| mobileNavigationFocused\) \{[\s\S]*if \(desktopSidebarOpen\) desktopPanelCloseRef\.current\?\.focus\(\);[\s\S]*else desktopToggleRef\.current\?\.focus\(\)/,
   );
   assert.match(
     sidebar,
@@ -153,10 +179,7 @@ test("desktop sidebar fully hides and exposes a focused restore control", () => 
     /const desktopNavigationFocused =[\s\S]*desktopSidebarRef\.current\?\.contains\(document\.activeElement\)[\s\S]*mobileToggleRef\.current\?\.focus\(\)/,
   );
   assert.match(panel, /if \(!active\) return;[\s\S]*loadPanel/);
-  assert.match(
-    panel,
-    /if \(!active \|\| !canManageWorkspace \|\| isSearching \|\| loadingPanel\) return/,
-  );
+  assert.match(panel, /loadPanel\(\{ force: isSearching, query: sidebarQuery\.trim\(\) \}\)/);
   assert.match(panelData, /const enabledRef = useRef\(enabled\)/);
   assert.match(panelData, /if \(!enabledRef\.current\) return/);
   assert.doesNotMatch(
@@ -164,23 +187,53 @@ test("desktop sidebar fully hides and exposes a focused restore control", () => 
     /useEffect\(\(\) => \{\s*loadPanel\(\);\s*\}, \[loadPanel\]\)/,
   );
   assert.match(rail, /data-testid="sidebar-panel-toggle"/);
+  assert.doesNotMatch(rail, /const showLabels/);
+  assert.match(rail, /className="sr-only"/);
+  assert.match(rail, /PanelLeftOpen/);
+  assert.match(
+    rail,
+    /panelOpen \? t\("sidebar\.hide"\) : t\("sidebar\.show"\)/,
+  );
   assert.match(panel, /sidebar\.hide/);
   assert.match(panel, /PanelLeftClose/);
 });
 
-test("visible desktop sidebar keeps compact rail labels readable", () => {
+test("expanded desktop sidebar uses one panel and collapsed mode keeps aligned icon targets", () => {
   const sidebar = read("src/components/layout/sidebar.tsx");
   const rail = read("src/components/layout/sidebar/rail.tsx");
+  const panel = read("src/components/layout/sidebar/panel.tsx");
+  const panelNav = read("src/components/layout/sidebar/panel-nav.tsx");
+  const workspaceSwitcher = read(
+    "src/components/layout/workspace-switcher.tsx",
+  );
   const translations = read("src/lib/i18n/translations.ts");
 
-  assert.match(sidebar, /useState\(initialDesktopSidebarOpen\)/);
+  assert.match(sidebar, /useState\(\s*initialDesktopSidebarOpen,?\s*\)/);
   assert.match(sidebar, /w-\[64px\]/);
-  assert.match(rail, /bg-\[#16132f\]/);
-  assert.match(rail, /min-h-\[48px\]/);
+  assert.match(sidebar, /w-\[272px\]/);
+  assert.match(rail, /data-testid="sidebar-rail"/);
+  assert.match(rail, /upflow-sidebar-panel/);
+  assert.match(rail, /dark:bg-\[#050816\]/);
+  assert.match(rail, /from-blue-600\/55 to-violet-600\/32/);
+  assert.doesNotMatch(rail, /bg-white text-\[#171331\]/);
+  assert.match(rail, /h-11 w-11/);
+  assert.match(rail, /\[scrollbar-width:none\]/);
   assert.match(rail, /sidebar-rail-item-label/);
-  assert.match(rail, /whitespace-normal/);
-  assert.match(rail, /overflow-wrap:anywhere/);
   assert.doesNotMatch(rail, /truncate/);
+  assert.doesNotMatch(rail, /showLabels/);
+  assert.match(sidebar, /desktopSidebarOpen[\s\S]*"pointer-events-none w-0 opacity-0"[\s\S]*"w-\[64px\] opacity-100"/);
+  assert.match(panel, /closeButtonRef\?: Ref<HTMLButtonElement>/);
+  assert.match(panel, /data-testid="sidebar-profile-footer"/);
+  assert.match(panel, /menuPlacement="top"/);
+  assert.doesNotMatch(workspaceSwitcher, /SlidersHorizontal/);
+  assert.doesNotMatch(workspaceSwitcher, /upflow-workspace-control/);
+  assert.match(workspaceSwitcher, /aria-expanded=\{open\}/);
+  assert.equal(
+    workspaceSwitcher.match(/t\("workspace\.options"\)/g)?.length,
+    1,
+  );
+  assert.match(panelNav, /flex flex-col gap-1\.5 px-2 pb-2/);
+  assert.match(panelNav, /relative flex h-11 shrink-0 items-center/);
   assert.match(translations, /"sidebar\.show": "Show sidebar"/);
   assert.match(translations, /"sidebar\.show": "Mostrar sidebar"/);
 
@@ -188,11 +241,56 @@ test("visible desktop sidebar keeps compact rail labels readable", () => {
   const toggleIndex = rail.indexOf('data-testid="sidebar-panel-toggle"');
   const navigationIndex = rail.indexOf('data-testid="sidebar-rail-navigation"');
   assert.ok(
-    brandIndex >= 0 &&
-      brandIndex < toggleIndex &&
-      toggleIndex < navigationIndex,
+    toggleIndex >= 0 &&
+      toggleIndex < brandIndex &&
+      brandIndex < navigationIndex,
   );
-  assert.match(rail, /mt-1 flex h-8 w-full shrink-0 items-center justify-center/);
+  assert.match(
+    rail,
+    /flex h-11 w-full shrink-0 items-center justify-center/,
+  );
+});
+
+test("expanded and collapsed sidebars share the requested category order", () => {
+  const rail = read("src/components/layout/sidebar/rail.tsx");
+  const primaryNavBlock = rail.slice(
+    rail.indexOf("export const primaryNav"),
+    rail.indexOf("interface RailProps"),
+  );
+  const hrefs = Array.from(
+    primaryNavBlock.matchAll(/href: "([^"]+)"/g),
+    (match) => match[1],
+  );
+
+  assert.deepEqual(hrefs, [
+    "/",
+    "/inbox",
+    "/calendar",
+    "/projects",
+    "/clients",
+    "/onboarding",
+    "/team",
+    "/time",
+    "/sala-de-reuniao",
+    "/activity",
+  ]);
+});
+
+test("Inbox shows the synchronized pending-message count in both sidebar modes", () => {
+  const sidebar = read("src/components/layout/sidebar.tsx");
+  const rail = read("src/components/layout/sidebar/rail.tsx");
+  const panelNav = read("src/components/layout/sidebar/panel-nav.tsx");
+  const header = read("src/components/layout/header.tsx");
+  const inbox = read("src/app/(dashboard)/inbox/page.tsx");
+  const countEvents = read("src/lib/inbox-pending-count.ts");
+
+  assert.match(sidebar, /INBOX_PENDING_COUNT_EVENT/);
+  assert.match(sidebar, /setInboxPendingCount\(detail\.count\)/);
+  assert.match(rail, /data-testid="sidebar-rail-inbox-count"/);
+  assert.match(panelNav, /data-testid="sidebar-panel-inbox-count"/);
+  assert.match(header, /countPendingInboxNotifications\(notifications\)/);
+  assert.match(inbox, /publishInboxPendingCount\(user\?\.id, counts\.action_needed\)/);
+  assert.match(countEvents, /count > 99 \? "99\+"/);
 });
 
 test("empty workspaces teach setup steps and permission boundaries", () => {
@@ -212,8 +310,14 @@ test("empty workspaces teach setup steps and permission boundaries", () => {
   assert.doesNotMatch(onboarding, /onboarding\.stepSpaceAction/);
   assert.match(onboarding, /onboarding\.stepSpaceBodyViewOnly/);
   assert.match(onboarding, /requiresWorkspaceAdmin: true/);
-  assert.match(onboarding, /!canManageWorkspace && Boolean\(step\.requiresWorkspaceAdmin\)/);
-  assert.match(onboarding, /const isInteractive = !disabled && !step\.complete/);
+  assert.match(
+    onboarding,
+    /!canManageWorkspace && Boolean\(step\.requiresWorkspaceAdmin\)/,
+  );
+  assert.match(
+    onboarding,
+    /const isInteractive = !disabled && !step\.complete/,
+  );
   assert.match(panel, /sidebar\.noSpacesHint/);
   assert.match(panel, /sidebar\.noSpacesViewOnly/);
   assert.match(panel, /canManageWorkspace \? \(/);
@@ -228,27 +332,58 @@ test("sidebar search queries the server and includes parent context for folder m
   const sidebarDiscovery = read("src/lib/sidebar-discovery.ts");
   const workspaceTreeRoute = read("src/app/api/workspace-tree/route.ts");
 
-  assert.match(panel, /loadPanel\(\{ force: isSearching, query: sidebarQuery\.trim\(\) \}\)/);
-  assert.match(panelData, /const NAVIGATION_ENDPOINT = "\/api\/workspace-tree"/);
-  assert.match(panelData, /\$\{NAVIGATION_ENDPOINT\}\?q=\$\{encodeURIComponent\(normalizedQuery\)\}&limit=500/);
+  assert.match(
+    panel,
+    /loadPanel\(\{ force: isSearching, query: sidebarQuery\.trim\(\) \}\)/,
+  );
+  assert.match(
+    panelData,
+    /const NAVIGATION_ENDPOINT = "\/api\/workspace-tree"/,
+  );
+  assert.match(
+    panelData,
+    /\$\{NAVIGATION_ENDPOINT\}\?q=\$\{encodeURIComponent\(normalizedQuery\)\}&limit=500/,
+  );
   assert.doesNotMatch(panelData, /fetch\("\/api\/sidebar"\)/);
-  assert.match(workspaceTreeRoute, /export \{ GET \} from "@\/app\/api\/sidebar\/route"/);
+  assert.match(
+    workspaceTreeRoute,
+    /export \{ GET \} from "@\/app\/api\/sidebar\/route"/,
+  );
   assert.match(panelData, /panelLoadFailed/);
   assert.match(panel, /sidebar\.navigationUnavailable/);
+  assert.match(panel, /upflow-sidebar-sticky sticky top-0 z-20/);
+  assert.match(panel, /dark:bg-\[#050816\]/);
+  assert.match(panel, /dark:bg-\[#071024\]/);
+  assert.doesNotMatch(panel, /dark:bg-\[#050816\]\/\[0\.92\]/);
+  assert.doesNotMatch(panel, /dark:bg-\[#071024\]\/80/);
   assert.match(sidebarRoute, /loadSidebarFolderContext\(/);
-  assert.match(sidebarRoute, /matchingProjects\.map\(\(project\) => project\.folder_id\)/);
-  assert.match(sidebarRoute, /projectPage\.items\.map\(\(project\) => project\.folder_id\)/);
+  assert.match(
+    sidebarRoute,
+    /matchingProjects\.map\(\(project\) => project\.folder_id\)/,
+  );
+  assert.match(
+    sidebarRoute,
+    /projectPage\.items\.map\(\(project\) => project\.folder_id\)/,
+  );
   assert.match(sidebarDiscovery, /pendingFolderIds\.size > 0/);
-  assert.match(sidebarRoute, /for \(const folder of folderById\.values\(\)\) spaceIds\.add\(folder\.space_id\)/);
+  assert.match(
+    sidebarRoute,
+    /for \(const folder of folderById\.values\(\)\) spaceIds\.add\(folder\.space_id\)/,
+  );
 });
 
 test("workspace sidebar list clicks open the selected list directly", () => {
   const projectRow = read("src/components/layout/sidebar/project-row.tsx");
   const spaceTree = read("src/components/layout/sidebar/space-tree.tsx");
 
-  assert.match(projectRow, /href=\{href \?\? `\/projects\/\$\{project\.id\}`\}/);
-  const directListHrefs = spaceTree.match(/href=\{`\/projects\/\$\{p\.id\}`\}/g) ?? [];
-  assert.equal(directListHrefs.length, 2);
+  assert.match(
+    projectRow,
+    /href=\{href \?\? `\/projects\/\$\{project\.id\}`\}/,
+  );
+  assert.match(
+    spaceTree,
+    /href=\{`\/projects\/\$\{project\.id\}`\}/,
+  );
   assert.doesNotMatch(spaceTree, /tab=browse&list=/);
   assert.doesNotMatch(spaceTree, /\/folders\/\$\{f\.id\}\?list=/);
 });

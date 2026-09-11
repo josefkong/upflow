@@ -5,7 +5,6 @@ import {
   Check,
   ChevronDown,
   Plus,
-  SlidersHorizontal,
   Trash2,
   UserPlus,
 } from "lucide-react";
@@ -33,9 +32,11 @@ interface ListResponse {
 export default function WorkspaceSwitcher({
   initialData,
   userName,
+  menuPlacement = "bottom",
 }: {
   initialData?: ListResponse;
   userName?: string | null;
+  menuPlacement?: "top" | "bottom";
 }) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
@@ -196,24 +197,15 @@ export default function WorkspaceSwitcher({
       <div className="upflow-workspace-card group relative overflow-hidden rounded-[20px] border border-border bg-card p-2 shadow-sm backdrop-blur-xl transition-all hover:border-primary/[0.35] hover:bg-accent/60 hover:shadow-md dark:border-blue-300/[0.15] dark:bg-[#071024]/80 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_16px_42px_rgba(0,0,0,0.24),0_0_34px_rgba(37,99,235,0.12)] dark:hover:border-blue-300/30 dark:hover:bg-[#0a1430]/90 dark:hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_18px_48px_rgba(0,0,0,0.28),0_0_42px_rgba(59,130,246,0.18)]">
         <span className="upflow-workspace-glow pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_8%,rgba(59,130,246,0.24),transparent_34%),radial-gradient(circle_at_100%_0%,rgba(139,92,246,0.18),transparent_28%)]" />
         <span className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-blue-200/[0.35] to-transparent" />
-        <div className="relative flex items-start justify-between gap-2 px-2 pt-1">
-          <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-muted-foreground dark:text-blue-100/[0.55]">
-            {t("sidebar.workspace")}
-          </p>
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            disabled={busy}
-            aria-label={t("workspace.options")}
-            className="upflow-workspace-control flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-background/70 text-muted-foreground shadow-sm transition-all hover:border-primary/[0.35] hover:bg-accent hover:text-foreground dark:border-white/10 dark:bg-white/[0.15] dark:text-blue-100/70 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-blue-300/[0.15] dark:hover:bg-blue-400/10 dark:hover:text-blue-50"
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        <p className="relative px-2 pt-1 text-[9px] font-semibold uppercase tracking-[0.22em] text-muted-foreground dark:text-blue-100/[0.55]">
+          {t("sidebar.workspace")}
+        </p>
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
           disabled={busy}
+          aria-label={t("workspace.options")}
+          aria-expanded={open}
           className="relative mt-1 flex w-full items-center gap-3 rounded-2xl px-2 py-2 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-blue-400/[0.50]"
         >
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-500 text-sm font-bold text-white shadow-[0_0_24px_rgba(59,130,246,0.42)] ring-1 ring-white/[0.15]">
@@ -237,7 +229,12 @@ export default function WorkspaceSwitcher({
       </div>
 
       {open && (
-        <div className="upflow-workspace-menu absolute left-0 right-0 z-50 mt-2 overflow-hidden rounded-[18px] border border-border bg-popover/95 text-popover-foreground shadow-xl backdrop-blur-xl dark:border-blue-300/20 dark:bg-[#070b18]/95 dark:shadow-[0_24px_70px_rgba(0,0,0,0.55),0_0_42px_rgba(37,99,235,0.18)]">
+        <div
+          className={cn(
+            "upflow-workspace-menu absolute left-0 right-0 z-50 overflow-hidden rounded-[18px] border border-border bg-popover/95 text-popover-foreground shadow-xl backdrop-blur-xl dark:border-blue-300/20 dark:bg-[#070b18]/95 dark:shadow-[0_24px_70px_rgba(0,0,0,0.55),0_0_42px_rgba(37,99,235,0.18)]",
+            menuPlacement === "top" ? "bottom-full mb-2" : "mt-2",
+          )}
+        >
           <ul className="max-h-64 overflow-y-auto py-1">
             {data.workspaces.map((w) => {
               const active = w.id === data.current_workspace_id;

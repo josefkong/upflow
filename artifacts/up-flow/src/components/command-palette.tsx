@@ -102,8 +102,8 @@ export default function CommandPalette() {
   const canCreateProject =
     user?.isSuperAdmin ||
     user?.currentRole === "owner" ||
-    user?.currentRole === "admin" ||
-    user?.currentRole === "member";
+    user?.currentRole === "admin";
+  const canCreateClient = canCreateProject || user?.currentRole === "member";
   const copy = {
     input: t("command.placeholder"),
     empty: t("command.noResults"),
@@ -199,26 +199,30 @@ export default function CommandPalette() {
         <CommandList>
           <CommandEmpty>{copy.empty}</CommandEmpty>
 
-          {canCreateProject && (
+          {(canCreateProject || canCreateClient) && (
             <CommandGroup heading={copy.actions}>
-              <CommandItem
-                onSelect={() => {
-                  setOpen(false);
-                  setShowNewProject(true);
-                }}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                <span>{copy.newProject}</span>
-              </CommandItem>
-              <CommandItem
-                onSelect={() => {
-                  setOpen(false);
-                  setShowClientOnboarding(true);
-                }}
-              >
-                <Building2 className="mr-2 h-4 w-4" />
-                <span>{copy.newClient}</span>
-              </CommandItem>
+              {canCreateProject ? (
+                <CommandItem
+                  onSelect={() => {
+                    setOpen(false);
+                    setShowNewProject(true);
+                  }}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  <span>{copy.newProject}</span>
+                </CommandItem>
+              ) : null}
+              {canCreateClient ? (
+                <CommandItem
+                  onSelect={() => {
+                    setOpen(false);
+                    setShowClientOnboarding(true);
+                  }}
+                >
+                  <Building2 className="mr-2 h-4 w-4" />
+                  <span>{copy.newClient}</span>
+                </CommandItem>
+              ) : null}
             </CommandGroup>
           )}
 
@@ -385,8 +389,7 @@ export default function CommandPalette() {
         </CommandList>
       </CommandDialog>
 
-      {canCreateProject && (
-        <>
+      {canCreateProject ? (
           <NewProjectDialog
             open={showNewProject}
             onClose={() => setShowNewProject(false)}
@@ -395,6 +398,8 @@ export default function CommandPalette() {
               router.push(`/projects/${project.id}`);
             }}
           />
+      ) : null}
+      {canCreateClient ? (
           <CreateCompanyDialog
             open={showClientOnboarding}
             mode="onboarding"
@@ -404,8 +409,7 @@ export default function CommandPalette() {
               router.push(`/clients/${company.id}`);
             }}
           />
-        </>
-      )}
+      ) : null}
     </>
   );
 }

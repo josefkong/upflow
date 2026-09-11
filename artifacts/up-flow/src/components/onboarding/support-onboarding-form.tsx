@@ -348,7 +348,7 @@ export default function SupportOnboardingForm({ taskId, onClose, onUpdate, embed
               <SectionTitle title={copy.group} />
               <div className="grid gap-4 md:grid-cols-2">
                 <Field icon={<MessageSquareText className="h-5 w-5" />} label={copy.group_name} saving={savingField === "group_name"} saved={savedField === "group_name"}>
-                  <input value={values.group_name} disabled={!form?.can_edit} onChange={(event) => setField("group_name", event.target.value)} onBlur={(event) => flushField("group_name", event.currentTarget.value)} placeholder={`${form?.company.name ?? "Cliente"} - suporte`} className={fieldInputClassName} />
+                  <input value={values.group_name} disabled={!form?.can_edit} onChange={(event) => setField("group_name", event.target.value)} onBlur={(event) => flushField("group_name", event.currentTarget.value)} placeholder={`${form?.company.name ?? (isPt ? "Cliente" : "Client")} - ${isPt ? "suporte" : "support"}`} className={fieldInputClassName} />
                 </Field>
                 <Field icon={<Link2 className="h-5 w-5" />} label={copy.group_link} saving={savingField === "group_link"} saved={savedField === "group_link"}>
                   <div className="flex gap-2">
@@ -370,7 +370,7 @@ export default function SupportOnboardingForm({ taskId, onClose, onUpdate, embed
                   </select>
                 </Field>
                 <Field icon={<UserRound className="h-5 w-5" />} label={copy.main_client_contact} saving={savingField === "main_client_contact"} saved={savedField === "main_client_contact"}>
-                  <input value={values.main_client_contact} disabled={!form?.can_edit} onChange={(event) => setField("main_client_contact", event.target.value)} onBlur={(event) => flushField("main_client_contact", event.currentTarget.value)} placeholder="cliente@email.com / WhatsApp" className={fieldInputClassName} />
+                  <input value={values.main_client_contact} disabled={!form?.can_edit} onChange={(event) => setField("main_client_contact", event.target.value)} onBlur={(event) => flushField("main_client_contact", event.currentTarget.value)} placeholder={isPt ? "cliente@email.com / WhatsApp" : "client@email.com / WhatsApp"} className={fieldInputClassName} />
                 </Field>
               </div>
 
@@ -380,7 +380,7 @@ export default function SupportOnboardingForm({ taskId, onClose, onUpdate, embed
                   <input value={values.commercial_responsible} disabled={!form?.can_edit} onChange={(event) => setField("commercial_responsible", event.target.value)} onBlur={(event) => flushField("commercial_responsible", event.currentTarget.value)} placeholder={isPt ? "Nome do comercial" : "Commercial owner"} className={fieldInputClassName} />
                 </Field>
                 <Field icon={<UserRound className="h-5 w-5" />} label={copy.account_responsible} saving={savingField === "account_responsible"} saved={savedField === "account_responsible"}>
-                  <input value={values.account_responsible} disabled={!form?.can_edit} onChange={(event) => setField("account_responsible", event.target.value)} onBlur={(event) => flushField("account_responsible", event.currentTarget.value)} placeholder={isPt ? "Nome do responsavel da conta" : "Account owner"} className={fieldInputClassName} />
+                  <input value={values.account_responsible} disabled={!form?.can_edit} onChange={(event) => setField("account_responsible", event.target.value)} onBlur={(event) => flushField("account_responsible", event.currentTarget.value)} placeholder={isPt ? "Nome do responsável da conta" : "Account owner"} className={fieldInputClassName} />
                 </Field>
                 <Field icon={<UsersRound className="h-5 w-5" />} label={copy.internal_participants} saving={savingField === "internal_participants"} saved={savedField === "internal_participants"}>
                   <textarea value={values.internal_participants} disabled={!form?.can_edit} onChange={(event) => setField("internal_participants", event.target.value)} onBlur={(event) => flushField("internal_participants", event.currentTarget.value)} rows={4} placeholder={isPt ? "Um participante por linha" : "One participant per line"} className={cn(fieldInputClassName, "resize-none py-3")} />

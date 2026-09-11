@@ -1,9 +1,30 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
-import { Search, Plus, Bell, UserCheck, MessageSquare, Clock, UserPlus, ArrowRightCircle, AtSign, Languages, Sparkles, X, Moon, Sun } from "lucide-react";
-import NewProjectDialog from "@/components/projects/new-project-dialog";
+import { toast } from "sonner";
+import {
+  Search,
+  Bell,
+  UserCheck,
+  MessageSquare,
+  Clock,
+  UserPlus,
+  ArrowRightCircle,
+  AtSign,
+  Languages,
+  RefreshCw,
+  Sparkles,
+  X,
+  Moon,
+  Sun,
+} from "lucide-react";
 import CommandPalette from "@/components/command-palette";
 import { useAppUser } from "@/components/user-provider";
 import { useLanguage } from "@/components/language-provider";
@@ -12,7 +33,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 import { getCachedJson } from "@/lib/client-cache";
 import { getNotificationHref } from "@/lib/notification-links";
-import { memberJoinedNotificationLabel } from "@/lib/notification-copy";
+import { equipmentNotificationLabel, memberJoinedNotificationLabel } from "@/lib/notification-copy";
 import {
   NOTIFICATION_PREFERENCES_EVENT,
   readNotificationPreferences,
@@ -20,6 +41,14 @@ import {
 } from "@/lib/notification-preferences";
 import { cn } from "@/lib/utils";
 import { logError } from "@/lib/log-error";
+import {
+  ApiResponseError,
+  recoverExpiredSession,
+} from "@/lib/client-auth-recovery";
+import {
+  countPendingInboxNotifications,
+  publishInboxPendingCount,
+} from "@/lib/inbox-pending-count";
 import type { Notification } from "@/lib/types";
 
 interface HeaderProps {
@@ -36,14 +65,38 @@ interface HeaderProps {
   onSearchSubmit?: () => void;
   /** Optional page actions rendered before the notifications control. */
   actions?: ReactNode;
-  /** Use when a page supplies its own primary actions in the header. */
-  hideUtilityControls?: boolean;
-  hideDefaultPrimaryAction?: boolean;
 }
 
 const NOTIFICATION_CACHE_TTL_MS = 30_000;
-let notificationCache: { userId: string; items: Notification[]; loadedAt: number } | null = null;
-let notificationRequest: { userId: string; promise: Promise<Notification[]> } | null = null;
+const COMMERCIAL_AUTOMATION_PULSE_INTERVAL_MS = 30_000;
+let notificationCache: {
+  userId: string;
+  items: Notification[];
+  loadedAt: number;
+} | null = null;
+
+function claimCommercialAutomationPulse(userId: string) {
+  const now = Date.now();
+  try {
+    const key = `upflow:commercial-automation-pulse:${userId}`;
+    const lastRun = Number(window.localStorage.getItem(key) ?? 0);
+    if (
+      Number.isFinite(lastRun) &&
+      now - lastRun < COMMERCIAL_AUTOMATION_PULSE_INTERVAL_MS
+    ) {
+      return false;
+    }
+    window.localStorage.setItem(key, String(now));
+  } catch {
+    // Privacy modes can disable localStorage. The server-side atomic claim
+    // still prevents duplicate workflow notifications in that case.
+  }
+  return true;
+}
+let notificationRequest: {
+  userId: string;
+  promise: Promise<Notification[]>;
+} | null = null;
 
 function fetchUnreadCount(userId: string, force = false): Promise<number> {
   return getCachedJson<{ unread: number }>(
@@ -58,7 +111,10 @@ function fetchUnreadCount(userId: string, force = false): Promise<number> {
   });
 }
 
-function fetchNotificationItems(userId: string, force = false): Promise<Notification[]> {
+function fetchNotificationItems(
+  userId: string,
+  force = false,
+): Promise<Notification[]> {
   if (
     !force &&
     notificationCache?.userId === userId &&
@@ -73,17 +129,21 @@ function fetchNotificationItems(userId: string, force = false): Promise<Notifica
     return notificationRequest.promise;
   }
 
-  const request = fetch("/api/notifications")
-    .then(async (res) => {
-      if (!res.ok) throw new Error(`Unable to load notifications: ${res.status}`);
-      const data = (await res.json()) as { items: Notification[] };
-      if (!Array.isArray(data.items)) {
-        throw new Error("Notifications response did not include an items list");
-      }
-      const items = data.items;
-      notificationCache = { userId, items, loadedAt: Date.now() };
-      return items;
-    });
+  const request = fetch("/api/notifications").then(async (res) => {
+    if (!res.ok) {
+      throw new ApiResponseError(
+        `Unable to load notifications: ${res.status}`,
+        res.status,
+      );
+    }
+    const data = (await res.json()) as { items: Notification[] };
+    if (!Array.isArray(data.items)) {
+      throw new Error("Notifications response did not include an items list");
+    }
+    const items = data.items;
+    notificationCache = { userId, items, loadedAt: Date.now() };
+    return items;
+  });
 
   notificationRequest = { userId, promise: request };
   void request
@@ -94,18 +154,33 @@ function fetchNotificationItems(userId: string, force = false): Promise<Notifica
   return request;
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  todo: "To Do",
-  in_progress: "In Progress",
-  done: "Done",
-};
+function isPortuguese(language: "en" | "pt" | "pt-BR") {
+  return language === "pt" || language === "pt-BR";
+}
 
-function notificationIcon(type: string) {
-  if (type === "assigned") return <UserCheck className="w-3.5 h-3.5 text-primary" />;
-  if (type === "commented") return <MessageSquare className="w-3.5 h-3.5 text-upflow-success" />;
-  if (type === "member_joined") return <UserPlus className="w-3.5 h-3.5 text-primary" />;
-  if (type === "status_changed") return <ArrowRightCircle className="w-3.5 h-3.5 text-primary" />;
-  if (type === "mentioned") return <AtSign className="w-3.5 h-3.5 text-upflow-success" />;
+function notificationStatusLabel(
+  status: string,
+  language: "en" | "pt" | "pt-BR",
+) {
+  const labels = isPortuguese(language)
+    ? { todo: "A Fazer", in_progress: "Em Andamento", done: "Concluído" }
+    : { todo: "To Do", in_progress: "In Progress", done: "Done" };
+  return labels[status as keyof typeof labels] ?? status;
+}
+
+function notificationIcon(type: string, source?: string) {
+  if (source === "space_share_request")
+    return <UserPlus className="w-3.5 h-3.5 text-primary" />;
+  if (type === "assigned")
+    return <UserCheck className="w-3.5 h-3.5 text-primary" />;
+  if (type === "commented")
+    return <MessageSquare className="w-3.5 h-3.5 text-upflow-success" />;
+  if (type === "member_joined")
+    return <UserPlus className="w-3.5 h-3.5 text-primary" />;
+  if (type === "status_changed")
+    return <ArrowRightCircle className="w-3.5 h-3.5 text-primary" />;
+  if (type === "mentioned")
+    return <AtSign className="w-3.5 h-3.5 text-upflow-success" />;
   return <Clock className="w-3.5 h-3.5 text-upflow-warning" />;
 }
 
@@ -120,18 +195,26 @@ function getStringData(data: Record<string, unknown>, key: string) {
   return typeof value === "string" ? value : undefined;
 }
 
+function getNumberData(data: Record<string, unknown>, key: string) {
+  const value = data[key];
+  return typeof value === "number" ? value : undefined;
+}
+
 function calendarAssignmentLabel(
   type: string | undefined,
   language: "en" | "pt" | "pt-BR",
 ) {
   const isMeeting = type === "meeting";
   if (language === "en") return isMeeting ? "meeting" : "calendar event";
-  return isMeeting ? "reuniao" : "evento";
+  return isMeeting ? "reunião" : "evento do calendário";
 }
 
 function notificationContext(n: Notification, language: "en" | "pt" | "pt-BR") {
   const data = notificationData(n);
-  if (data.source === "calendar_event_assigned") {
+  if (
+    data.source === "calendar_event_assigned" ||
+    data.source === "calendar_event_reminder"
+  ) {
     const startsAt = getStringData(data, "starts_at");
     if (startsAt) {
       const date = new Date(startsAt);
@@ -142,7 +225,7 @@ function notificationContext(n: Notification, language: "en" | "pt" | "pt-BR") {
         }).format(date);
       }
     }
-    return n.workspace?.name ?? (language === "en" ? "Calendar" : "Calendario");
+    return n.workspace?.name ?? (language === "en" ? "Calendar" : "Calendário");
   }
 
   return n.task?.project?.name ?? n.workspace?.name ?? null;
@@ -151,46 +234,161 @@ function notificationContext(n: Notification, language: "en" | "pt" | "pt-BR") {
 function shouldShowAssistantPopup(n: Notification) {
   if (n.read || n.type !== "assigned") return false;
   const data = notificationData(n);
-  return Boolean(n.task?.id || data.source === "calendar_event_assigned");
+  return Boolean(
+    n.task?.id ||
+      data.source === "calendar_event_assigned" ||
+      data.source === "calendar_event_reminder",
+  );
 }
 
-function notificationLabel(n: Notification, language: "en" | "pt" | "pt-BR" = "en") {
+function notificationAcknowledgementKey(notification: Notification) {
+  const data = notificationData(notification);
+  const calendarEventId = getStringData(data, "calendar_event_id");
+  const calendarReminderKey = getStringData(
+    data,
+    "calendar_event_reminder_key",
+  );
+  if (data.source === "calendar_event_reminder" && calendarReminderKey) {
+    return `calendar-reminder:${calendarReminderKey}`;
+  }
+  if (data.source === "calendar_event_assigned" && calendarEventId) {
+    return `calendar-event:${calendarEventId}`;
+  }
+  return `notification:${notification.id}`;
+}
+
+function notificationLabel(
+  n: Notification,
+  language: "en" | "pt" | "pt-BR" = "en",
+) {
   if (n.type === "member_joined") {
     return memberJoinedNotificationLabel(n, language);
   }
   const data = notificationData(n);
+  const equipmentLabel = equipmentNotificationLabel(n, language);
+  if (equipmentLabel) return equipmentLabel;
+  if (data.source === "space_share_request") {
+    const actor =
+      getStringData(data, "actor_name") ??
+      (language === "en" ? "A collaborator" : "Um colaborador");
+    const collaborator =
+      getStringData(data, "collaborator_name") ??
+      (language === "en" ? "a collaborator" : "um colaborador");
+    const space =
+      getStringData(data, "space_name") ??
+      (language === "en" ? "a space" : "um espaço");
+    return language === "en"
+      ? `${actor} requested access to ${space} for ${collaborator}`
+      : `${actor} solicitou acesso ao espaço ${space} para ${collaborator}`;
+  }
   if (data.source === "social_media_moodboard_ready") {
-    const taskTitle = n.task?.title || getStringData(data, "task_title") || "the moodboard";
+    const taskTitle =
+      n.task?.title ||
+      getStringData(data, "task_title") ||
+      (language === "en" ? "the moodboard" : "o moodboard");
     return language === "en"
       ? `Social Media moodboard ready: "${taskTitle}" can move into creative production`
-      : `Moodboard de Social Media pronto: "${taskTitle}" pode seguir para producao criativa`;
+      : `Moodboard de Social Media pronto: "${taskTitle}" pode seguir para produção criativa`;
   }
   if (data.source === "social_media_post_overdue") {
-    const taskTitle = n.task?.title || getStringData(data, "task_title") || "the social post";
+    const taskTitle =
+      n.task?.title ||
+      getStringData(data, "task_title") ||
+      (language === "en" ? "the social post" : "o post de social media");
     return language === "en"
       ? `Social Media post overdue: "${taskTitle}" needs attention`
-      : `Post de Social Media atrasado: "${taskTitle}" precisa de atencao`;
+      : `Post de Social Media atrasado: "${taskTitle}" precisa de atenção`;
   }
   if (data.source === "calendar_event_assigned") {
-    const eventTitle = getStringData(data, "calendar_event_title") ?? "event";
+    const eventTitle =
+      getStringData(data, "calendar_event_title") ??
+      (language === "en" ? "event" : "evento");
     const eventType = calendarAssignmentLabel(
       getStringData(data, "calendar_event_type"),
       language,
     );
     return language === "en"
       ? `Assigned to ${eventType} "${eventTitle}"`
-      : `Atribuido a ${eventType} "${eventTitle}"`;
+      : `Atribuído a ${eventType} "${eventTitle}"`;
   }
-  const taskTitle = n.task?.title || getStringData(data, "task_title") || "a task";
+  if (data.source === "calendar_event_reminder") {
+    const eventTitle =
+      getStringData(data, "calendar_event_title") ??
+      (language === "en" ? "event" : "evento");
+    const minutes = getNumberData(data, "minutes_before");
+    if (minutes === 60) {
+      return language === "en"
+        ? `Reminder: "${eventTitle}" starts in 1 hour`
+        : `Lembrete: "${eventTitle}" começa em 1 hora`;
+    }
+    return language === "en"
+      ? `Reminder: "${eventTitle}" starts in ${minutes ?? 0} minutes`
+      : `Lembrete: "${eventTitle}" começa em ${minutes ?? 0} minutos`;
+  }
+  if (data.source === "manual_project_notification") {
+    const actor =
+      getStringData(data, "actor_name") ||
+      (language === "en" ? "A teammate" : "Um colega");
+    const notifiedTaskTitle =
+      n.task?.title ||
+      getStringData(data, "task_title") ||
+      (language === "en" ? "a task" : "uma tarefa");
+    return language === "en"
+      ? `${actor} requested your attention on "${notifiedTaskTitle}"`
+      : `${actor} solicitou sua atenção em "${notifiedTaskTitle}"`;
+  }
+  if (data.source === "commercial_lead_presentation_confirmation") {
+    const brandName =
+      getStringData(data, "brand_name") ||
+      n.task?.title ||
+      (language === "en" ? "the Lead" : "o Lead");
+    return language === "en"
+      ? `Confirm whether the presentation for "${brandName}" took place`
+      : `Confirme se a apresentação de "${brandName}" foi realizada`;
+  }
+  if (data.source === "commercial_lead_qualification") {
+    const brandName =
+      getStringData(data, "brand_name") ||
+      n.task?.title ||
+      (language === "en" ? "the Lead" : "o Lead");
+    return language === "en"
+      ? `Qualify "${brandName}" to continue or archive this Lead`
+      : `Qualifique "${brandName}" para continuar ou arquive este Lead`;
+  }
+  if (data.source === "commercial_lead_follow_up_due") {
+    const brandName =
+      getStringData(data, "brand_name") ||
+      n.task?.title ||
+      (language === "en" ? "the Lead" : "o Lead");
+    return language === "en"
+      ? `Follow Up due for "${brandName}"`
+      : `Follow Up pendente para "${brandName}"`;
+  }
+  if (data.source === "task_follower_added") {
+    const actor =
+      getStringData(data, "actor_name") ||
+      (language === "en" ? "A teammate" : "Um colega");
+    const followedTaskTitle =
+      n.task?.title ||
+      getStringData(data, "task_title") ||
+      (language === "en" ? "a task" : "uma tarefa");
+    return language === "en"
+      ? `${actor} added you as a follower of "${followedTaskTitle}"`
+      : `${actor} adicionou você ao acompanhamento de "${followedTaskTitle}"`;
+  }
+  const taskTitle =
+    n.task?.title ||
+    getStringData(data, "task_title") ||
+    (language === "en" ? "a task" : "uma tarefa");
   if (n.type === "assigned") {
     return language === "en"
       ? `Assigned to "${taskTitle}"`
-      : `Atribuido a "${taskTitle}"`;
+      : `Atribuído a "${taskTitle}"`;
   }
   if (n.type === "commented") {
     return language === "en"
       ? `New comment on "${taskTitle}"`
-      : `Novo comentario em "${taskTitle}"`;
+      : `Novo comentário em "${taskTitle}"`;
   }
   if (n.type === "due_soon") {
     return language === "en"
@@ -198,15 +396,27 @@ function notificationLabel(n: Notification, language: "en" | "pt" | "pt-BR" = "e
       : `"${taskTitle}" vence em breve`;
   }
   if (n.type === "status_changed") {
-    const actor = getStringData(data, "actor_name") || (language === "en" ? "Someone" : "Alguem");
+    const actor =
+      getStringData(data, "actor_name") ||
+      (language === "en" ? "Someone" : "Alguém");
     const newStatus = getStringData(data, "new_status");
-    const newLabel = newStatus ? STATUS_LABEL[newStatus] ?? newStatus : "a new status";
-    return `${actor} moved "${taskTitle}" to ${newLabel}`;
+    const newLabel = newStatus
+      ? notificationStatusLabel(newStatus, language)
+      : language === "en"
+        ? "a new status"
+        : "um novo status";
+    return language === "en"
+      ? `${actor} moved "${taskTitle}" to ${newLabel}`
+      : `${actor} moveu "${taskTitle}" para ${newLabel}`;
   }
   if (n.type === "mentioned") {
     const data = notificationData(n);
-    const actor = getStringData(data, "actor_name") || (language === "en" ? "Someone" : "Alguem");
-    return `${actor} mentioned you on "${taskTitle}"`;
+    const actor =
+      getStringData(data, "actor_name") ||
+      (language === "en" ? "Someone" : "Alguém");
+    return language === "en"
+      ? `${actor} mentioned you on "${taskTitle}"`
+      : `${actor} mencionou você em "${taskTitle}"`;
   }
   return taskTitle;
 }
@@ -219,8 +429,6 @@ export default function Header({
   onSearchChange,
   onSearchSubmit,
   actions,
-  hideUtilityControls = false,
-  hideDefaultPrimaryAction = false,
 }: HeaderProps) {
   const router = useRouter();
   const user = useAppUser();
@@ -228,17 +436,22 @@ export default function Header({
   const { resolvedTheme, setTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   const [search, setSearch] = useState("");
-  const [showNewProject, setShowNewProject] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsHaveLoaded, setNotificationsHaveLoaded] = useState(false);
-  const [notificationListUnavailable, setNotificationListUnavailable] = useState(false);
-  const [notificationUnreadUnavailable, setNotificationUnreadUnavailable] = useState(false);
+  const [notificationListUnavailable, setNotificationListUnavailable] =
+    useState(false);
+  const [notificationUnreadUnavailable, setNotificationUnreadUnavailable] =
+    useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [assistantNotification, setAssistantNotification] = useState<Notification | null>(null);
+  const [assistantNotification, setAssistantNotification] =
+    useState<Notification | null>(null);
+  const [assistantActionPending, setAssistantActionPending] = useState(false);
   const [notificationPreferences, setNotificationPreferences] =
-    useState<NotificationPreferences>(() => readNotificationPreferences(user?.id));
+    useState<NotificationPreferences>(() =>
+      readNotificationPreferences(user?.id),
+    );
   const panelRef = useRef<HTMLDivElement>(null);
   const notificationToggleRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -246,73 +459,77 @@ export default function Header({
   const shownAssistantIdsRef = useRef<Set<string>>(new Set());
   const notificationListRequestRef = useRef(0);
   const notificationUnreadRequestRef = useRef(0);
-  const canCreateProject =
-    user?.isSuperAdmin ||
-    user?.currentRole === "owner" ||
-    user?.currentRole === "admin" ||
-    user?.currentRole === "member";
   const notificationsUnavailable =
-    notificationListUnavailable || (!notificationsHaveLoaded && notificationUnreadUnavailable);
+    notificationListUnavailable ||
+    (!notificationsHaveLoaded && notificationUnreadUnavailable);
   const effectiveSearchAriaLabel =
     searchAriaLabel ?? t("header.searchAriaLabel", { title });
   const usesLocalSearchLabel = searchAriaLabel !== undefined;
 
+  useEffect(() => {
+    publishInboxPendingCount(
+      user?.id,
+      countPendingInboxNotifications(notifications),
+    );
+  }, [notifications, user?.id]);
 
-  const fetchNotifications = useCallback(async (
-    force = false,
-    options?: { showAssistant?: boolean },
-  ) => {
-    const userId = user?.id;
-    if (!userId) {
-      setNotifications([]);
-      setUnreadCount(0);
-      setNotificationsLoading(false);
-      setNotificationsHaveLoaded(false);
-      setNotificationListUnavailable(false);
-      setNotificationUnreadUnavailable(false);
-      return;
-    }
+  const fetchNotifications = useCallback(
+    async (force = false, options?: { showAssistant?: boolean }) => {
+      const userId = user?.id;
+      if (!userId) {
+        setNotifications([]);
+        setUnreadCount(0);
+        setNotificationsLoading(false);
+        setNotificationsHaveLoaded(false);
+        setNotificationListUnavailable(false);
+        setNotificationUnreadUnavailable(false);
+        return;
+      }
 
-    const requestId = ++notificationListRequestRef.current;
-    setNotificationsLoading(true);
-    try {
-      const items = await fetchNotificationItems(userId, force);
-      if (
-        activeNotificationUserIdRef.current !== userId ||
-        notificationListRequestRef.current !== requestId
-      ) return;
-      setNotifications(items);
-      setUnreadCount(items.filter((n) => !n.read).length);
-      setNotificationsHaveLoaded(true);
-      setNotificationListUnavailable(false);
-      if (options?.showAssistant && notificationPreferences.assistantPopups) {
-        const nextNotification = items.find(
-          (item) =>
-            shouldShowAssistantPopup(item) &&
-            !shownAssistantIdsRef.current.has(item.id),
-        );
-        if (nextNotification) {
-          shownAssistantIdsRef.current.add(nextNotification.id);
-          setAssistantNotification(nextNotification);
+      const requestId = ++notificationListRequestRef.current;
+      setNotificationsLoading(true);
+      try {
+        const items = await fetchNotificationItems(userId, force);
+        if (
+          activeNotificationUserIdRef.current !== userId ||
+          notificationListRequestRef.current !== requestId
+        )
+          return;
+        setNotifications(items);
+        setUnreadCount(items.filter((n) => !n.read).length);
+        setNotificationsHaveLoaded(true);
+        setNotificationListUnavailable(false);
+        if (options?.showAssistant && notificationPreferences.assistantPopups) {
+          const nextNotification = items.find(
+            (item) =>
+              shouldShowAssistantPopup(item) &&
+              !shownAssistantIdsRef.current.has(item.id),
+          );
+          if (nextNotification) {
+            shownAssistantIdsRef.current.add(nextNotification.id);
+            setAssistantNotification(nextNotification);
+          }
+        }
+      } catch (error) {
+        if (recoverExpiredSession(error)) return;
+        logError("notifications:load", error);
+        if (
+          activeNotificationUserIdRef.current === userId &&
+          notificationListRequestRef.current === requestId
+        ) {
+          setNotificationListUnavailable(true);
+        }
+      } finally {
+        if (
+          activeNotificationUserIdRef.current === userId &&
+          notificationListRequestRef.current === requestId
+        ) {
+          setNotificationsLoading(false);
         }
       }
-    } catch (error) {
-      logError("notifications:load", error);
-      if (
-        activeNotificationUserIdRef.current === userId &&
-        notificationListRequestRef.current === requestId
-      ) {
-        setNotificationListUnavailable(true);
-      }
-    } finally {
-      if (
-        activeNotificationUserIdRef.current === userId &&
-        notificationListRequestRef.current === requestId
-      ) {
-        setNotificationsLoading(false);
-      }
-    }
-  }, [user?.id, notificationPreferences.assistantPopups]);
+    },
+    [user?.id, notificationPreferences.assistantPopups],
+  );
 
   useEffect(() => {
     activeNotificationUserIdRef.current = user?.id ?? null;
@@ -326,47 +543,58 @@ export default function Header({
     setNotificationUnreadUnavailable(false);
 
     const onPreferencesChanged = (event?: Event) => {
-      const detail = event instanceof CustomEvent
-        ? (event.detail as { userId?: string } | undefined)
-        : undefined;
+      const detail =
+        event instanceof CustomEvent
+          ? (event.detail as { userId?: string } | undefined)
+          : undefined;
       if (detail?.userId && detail.userId !== user?.id) return;
       setNotificationPreferences(readNotificationPreferences(user?.id));
     };
     onPreferencesChanged();
-    window.addEventListener(NOTIFICATION_PREFERENCES_EVENT, onPreferencesChanged);
+    window.addEventListener(
+      NOTIFICATION_PREFERENCES_EVENT,
+      onPreferencesChanged,
+    );
     window.addEventListener("storage", onPreferencesChanged);
     return () => {
-      window.removeEventListener(NOTIFICATION_PREFERENCES_EVENT, onPreferencesChanged);
+      window.removeEventListener(
+        NOTIFICATION_PREFERENCES_EVENT,
+        onPreferencesChanged,
+      );
       window.removeEventListener("storage", onPreferencesChanged);
     };
   }, [user?.id]);
 
-  const refreshUnreadCount = useCallback(async (force = false) => {
-    const userId = user?.id;
-    if (!userId) {
-      setUnreadCount(0);
-      return;
-    }
-    const requestId = ++notificationUnreadRequestRef.current;
-    try {
-      const count = await fetchUnreadCount(userId, force);
-      if (
-        activeNotificationUserIdRef.current === userId &&
-        notificationUnreadRequestRef.current === requestId
-      ) {
-        setUnreadCount(count);
-        setNotificationUnreadUnavailable(false);
+  const refreshUnreadCount = useCallback(
+    async (force = false) => {
+      const userId = user?.id;
+      if (!userId) {
+        setUnreadCount(0);
+        return;
       }
-    } catch (error) {
-      logError("notifications:unread-count", error);
-      if (
-        activeNotificationUserIdRef.current === userId &&
-        notificationUnreadRequestRef.current === requestId
-      ) {
-        setNotificationUnreadUnavailable(true);
+      const requestId = ++notificationUnreadRequestRef.current;
+      try {
+        const count = await fetchUnreadCount(userId, force);
+        if (
+          activeNotificationUserIdRef.current === userId &&
+          notificationUnreadRequestRef.current === requestId
+        ) {
+          setUnreadCount(count);
+          setNotificationUnreadUnavailable(false);
+        }
+      } catch (error) {
+        if (recoverExpiredSession(error)) return;
+        logError("notifications:unread-count", error);
+        if (
+          activeNotificationUserIdRef.current === userId &&
+          notificationUnreadRequestRef.current === requestId
+        ) {
+          setNotificationUnreadUnavailable(true);
+        }
       }
-    }
-  }, [user?.id]);
+    },
+    [user?.id],
+  );
 
   const retryNotifications = useCallback(() => {
     void fetchNotifications(true);
@@ -376,7 +604,9 @@ export default function Header({
   const closeNotificationPanel = useCallback((restoreFocus = false) => {
     setPanelOpen(false);
     if (restoreFocus) {
-      window.requestAnimationFrame(() => notificationToggleRef.current?.focus());
+      window.requestAnimationFrame(() =>
+        notificationToggleRef.current?.focus(),
+      );
     }
   }, []);
 
@@ -420,6 +650,71 @@ export default function Header({
   }, [user?.id, fetchNotifications, refreshUnreadCount]);
 
   useEffect(() => {
+    const userId = user?.id;
+    if (!userId) return;
+
+    let cancelled = false;
+    const runPulse = async () => {
+      if (
+        document.visibilityState !== "visible" ||
+        !claimCommercialAutomationPulse(userId)
+      ) {
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/commercial/automations/pulse", {
+          method: "POST",
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          throw new ApiResponseError(
+            `Unable to run commercial automations: ${response.status}`,
+            response.status,
+          );
+        }
+        const result = (await response.json()) as {
+          presentation_confirmations?: number;
+          follow_ups_created?: number;
+          equipment_overdue?: { notified?: number };
+        };
+        if (
+          !cancelled &&
+          ((result.presentation_confirmations ?? 0) > 0 ||
+            (result.follow_ups_created ?? 0) > 0 ||
+            (result.equipment_overdue?.notified ?? 0) > 0)
+        ) {
+          await Promise.all([
+            fetchNotifications(true, { showAssistant: true }),
+            refreshUnreadCount(true),
+          ]);
+        }
+      } catch (error) {
+        if (recoverExpiredSession(error)) return;
+        logError("commercial-automations:pulse", error, { user_id: userId });
+      }
+    };
+
+    void runPulse();
+    const interval = window.setInterval(
+      () => void runPulse(),
+      COMMERCIAL_AUTOMATION_PULSE_INTERVAL_MS,
+    );
+    const runWhenVisible = () => {
+      if (document.visibilityState === "visible") void runPulse();
+    };
+    window.addEventListener("focus", runWhenVisible);
+    document.addEventListener("visibilitychange", runWhenVisible);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", runWhenVisible);
+      document.removeEventListener("visibilitychange", runWhenVisible);
+    };
+  }, [user?.id, fetchNotifications, refreshUnreadCount]);
+
+  useEffect(() => {
     if (panelOpen) fetchNotifications();
   }, [panelOpen, fetchNotifications]);
 
@@ -444,7 +739,6 @@ export default function Header({
     };
   }, [closeNotificationPanel, panelOpen]);
 
-
   const handleMarkAllRead = async () => {
     const unread = notifications.filter((n) => !n.read);
     await Promise.all(
@@ -453,8 +747,8 @@ export default function Header({
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ read: true }),
-        })
-      )
+        }),
+      ),
     );
     setUnreadCount(0);
     setNotifications((prev) => {
@@ -466,28 +760,83 @@ export default function Header({
     });
   };
 
+  const markNotificationRead = useCallback(
+    async (notification: Notification) => {
+      if (notification.read) return true;
+
+      try {
+        const response = await fetch(`/api/notifications/${notification.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ read: true }),
+          keepalive: true,
+        });
+        if (!response.ok) {
+          throw new ApiResponseError(
+            `Unable to mark notification as read: ${response.status}`,
+            response.status,
+          );
+        }
+
+        const result = (await response.json()) as {
+          acknowledged_count?: number;
+        };
+        const acknowledgedCount = Math.max(
+          1,
+          result.acknowledged_count ?? 1,
+        );
+        const acknowledgementKey =
+          notificationAcknowledgementKey(notification);
+
+        setUnreadCount((count) => Math.max(0, count - acknowledgedCount));
+        setNotifications((prev) => {
+          const next = prev.map((item) =>
+            notificationAcknowledgementKey(item) === acknowledgementKey
+              ? { ...item, read: true }
+              : item,
+          );
+          notificationCache = user?.id
+            ? { userId: user.id, items: next, loadedAt: Date.now() }
+            : null;
+          return next;
+        });
+        return true;
+      } catch (error) {
+        if (recoverExpiredSession(error)) return false;
+        logError("notifications:mark-read", error, {
+          notification_id: notification.id,
+        });
+        toast.error(t("header.assistantActionFailed"));
+        void fetchNotifications(true);
+        void refreshUnreadCount(true);
+        return false;
+      }
+    },
+    [fetchNotifications, refreshUnreadCount, t, user?.id],
+  );
+
+  const handleDismissAssistantNotification = async () => {
+    const notification = assistantNotification;
+    if (!notification || assistantActionPending) return;
+
+    setAssistantActionPending(true);
+    const acknowledged = await markNotificationRead(notification);
+    if (acknowledged) {
+      setAssistantNotification((current) =>
+        current?.id === notification.id ? null : current,
+      );
+    }
+    setAssistantActionPending(false);
+  };
+
   const handleOpenNotification = async (notification: Notification) => {
     const href = getNotificationHref(notification);
-    if (!notification.read) {
-      setUnreadCount((count) => Math.max(0, count - 1));
-      setNotifications((prev) => {
-        const next = prev.map((n) =>
-          n.id === notification.id ? { ...n, read: true } : n,
-        );
-        notificationCache = user?.id
-          ? { userId: user.id, items: next, loadedAt: Date.now() }
-          : null;
-        return next;
-      });
-      fetch(`/api/notifications/${notification.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ read: true }),
-      }).catch(() => {
-        fetchNotifications(true);
-        refreshUnreadCount(true);
-      });
-    }
+    const acknowledged = await markNotificationRead(notification);
+    if (!acknowledged) return;
+
+    setAssistantNotification((current) =>
+      current?.id === notification.id ? null : current,
+    );
 
     if (href) {
       closeNotificationPanel();
@@ -508,7 +857,7 @@ export default function Header({
         router.push(`/search?q=${encodeURIComponent(normalizedQuery)}`);
       }
     },
-    [onSearchSubmit, router]
+    [onSearchSubmit, router],
   );
 
   const assistantContext = assistantNotification
@@ -517,13 +866,16 @@ export default function Header({
 
   return (
     <>
-      <header className="sticky top-0 z-30 flex min-h-20 flex-col gap-3 px-4 py-3 glass-header sm:flex-row sm:items-center sm:gap-4 sm:px-6">
+      <header className="sticky top-0 z-[70] flex min-h-20 flex-col gap-3 px-4 py-3 glass-header sm:flex-row sm:items-center sm:gap-4 sm:px-6">
         <form
+          data-testid="header-global-search"
           onSubmit={handleSearch}
           action="/search"
           method="get"
           className="w-full min-w-0 pl-11 sm:flex-1 md:pl-0"
-          aria-label={usesLocalSearchLabel ? undefined : effectiveSearchAriaLabel}
+          aria-label={
+            usesLocalSearchLabel ? undefined : effectiveSearchAriaLabel
+          }
         >
           <div className="relative w-full">
             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -531,7 +883,9 @@ export default function Header({
               ref={searchRef}
               type="search"
               name="q"
-              aria-label={usesLocalSearchLabel ? effectiveSearchAriaLabel : undefined}
+              aria-label={
+                usesLocalSearchLabel ? effectiveSearchAriaLabel : undefined
+              }
               value={searchValue ?? search}
               onChange={(e) => {
                 if (searchValue === undefined) setSearch(e.target.value);
@@ -547,7 +901,11 @@ export default function Header({
             />
             <button
               type="button"
-              onClick={() => window.dispatchEvent(new CustomEvent("upflow:command-palette-open"))}
+              onClick={() =>
+                window.dispatchEvent(
+                  new CustomEvent("upflow:command-palette-open"),
+                )
+              }
               aria-label={t("header.openCommandPalette")}
               className="upflow-shell-kbd absolute right-3 top-1/2 hidden -translate-y-1/2 items-center gap-1 rounded-lg border border-border bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:border-blue-300/10 dark:bg-white/5 md:flex"
             >
@@ -556,152 +914,170 @@ export default function Header({
           </div>
         </form>
 
-        <div className="flex flex-shrink-0 items-center justify-end gap-2 sm:self-auto">
-          {!hideUtilityControls && (
-            <>
-              <button
-                type="button"
-                onClick={toggleLanguage}
-                aria-label={t("language.toggle")}
-                title={`${t("language.toggle")}: ${
-                  language === "en"
-                    ? t("language.portugueseBrazil")
-                    : t("language.english")
-                }`}
-                className="upflow-shell-control inline-flex h-10 items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-xs font-semibold text-muted-foreground shadow-sm backdrop-blur-md transition-all hover:border-sky-400/[0.55] hover:bg-accent hover:text-foreground dark:border-blue-300/10 dark:bg-[#071024]/80 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] dark:hover:bg-sky-400/10 dark:hover:shadow-[0_0_24px_rgba(59,130,246,0.16)] sm:h-11 sm:px-3"
-              >
-                <Languages className="h-4 w-4" />
-                <span>{language === "en" ? "EN" : "PT"}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setTheme(isDark ? "light" : "dark")}
-                aria-label={isDark ? t("header.switchToLightMode") : t("header.switchToDarkMode")}
-                title={isDark ? t("header.switchToLightMode") : t("header.switchToDarkMode")}
-                className="upflow-shell-control inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm backdrop-blur-md transition-all hover:border-sky-400/[0.55] hover:bg-accent hover:text-foreground dark:border-blue-300/10 dark:bg-[#071024]/80 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] dark:hover:bg-sky-400/10 dark:hover:shadow-[0_0_24px_rgba(59,130,246,0.16)] sm:h-11 sm:w-11"
-              >
-                {isDark ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
-              </button>
-            </>
-          )}
+        <div className="flex min-w-0 flex-shrink-0 items-center justify-end gap-2 sm:self-auto">
           {actions}
-          <div className="relative" ref={panelRef}>
+          <div
+            data-testid="header-global-controls"
+            className="ml-auto flex shrink-0 items-center gap-2"
+          >
             <button
-              ref={notificationToggleRef}
               type="button"
-              onClick={() => setPanelOpen((v) => !v)}
-              aria-label={t("header.notifications")}
-              aria-expanded={panelOpen}
-              aria-controls="header-notification-panel"
-              className="upflow-shell-control relative flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm backdrop-blur-md transition-all hover:border-sky-400/[0.55] hover:bg-accent hover:text-foreground dark:border-blue-300/10 dark:bg-[#071024]/80 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] dark:hover:bg-sky-400/10 dark:hover:shadow-[0_0_24px_rgba(59,130,246,0.16)] sm:h-11 sm:w-11"
+              onClick={toggleLanguage}
+              aria-label={t("language.toggle")}
+              title={`${t("language.toggle")}: ${
+                language === "en"
+                  ? t("language.portugueseBrazil")
+                  : t("language.english")
+              }`}
+              className="upflow-shell-control inline-flex h-10 items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-xs font-semibold text-muted-foreground shadow-sm backdrop-blur-md transition-all hover:border-sky-400/[0.55] hover:bg-accent hover:text-foreground dark:border-blue-300/10 dark:bg-[#071024]/80 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] dark:hover:bg-sky-400/10 dark:hover:shadow-[0_0_24px_rgba(59,130,246,0.16)] sm:h-11 sm:px-3"
             >
-              <Bell className="w-[18px] h-[18px]" />
-              {unreadCount > 0 && (
-                <span className="upflow-pulse-badge absolute right-2 top-2 h-2 w-2 rounded-full bg-upflow-danger ring-2 ring-background" />
+              <Languages className="h-4 w-4" />
+              <span>{language === "en" ? "EN" : "PT"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setTheme(isDark ? "light" : "dark")}
+              aria-label={
+                isDark
+                  ? t("header.switchToLightMode")
+                  : t("header.switchToDarkMode")
+              }
+              title={
+                isDark
+                  ? t("header.switchToLightMode")
+                  : t("header.switchToDarkMode")
+              }
+              className="upflow-shell-control inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm backdrop-blur-md transition-all hover:border-sky-400/[0.55] hover:bg-accent hover:text-foreground dark:border-blue-300/10 dark:bg-[#071024]/80 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] dark:hover:bg-sky-400/10 dark:hover:shadow-[0_0_24px_rgba(59,130,246,0.16)] sm:h-11 sm:w-11"
+            >
+              {isDark ? (
+                <Sun className="h-[18px] w-[18px]" />
+              ) : (
+                <Moon className="h-[18px] w-[18px]" />
               )}
             </button>
-
-            {panelOpen && (
-              <div
-                id="header-notification-panel"
-                role="dialog"
-                aria-label={t("header.notifications")}
-                className="fixed left-4 right-4 top-16 z-50 overflow-hidden rounded-xl glass-strong sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80"
-              >
-                <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-                  <span className="text-sm font-semibold text-foreground">
-                    {t("header.notifications")}
-                  </span>
-                  {unreadCount > 0 && (
-                    <button
-                      onClick={handleMarkAllRead}
-                      className="text-xs text-primary hover:underline"
-                    >
-                      {t("header.markAllRead")}
-                    </button>
-                  )}
-                </div>
-                <div className="max-h-80 overflow-y-auto divide-y divide-border">
-                  {notificationsUnavailable && notifications.length > 0 && (
-                    <div
-                      role="status"
-                      aria-live="polite"
-                      className="flex items-center justify-between gap-3 border-b border-upflow-warning/30 bg-upflow-warning/10 px-4 py-2.5 text-xs text-foreground"
-                    >
-                      <span>{t("header.notificationsUnavailableStale")}</span>
-                      <button
-                        type="button"
-                        onClick={retryNotifications}
-                        className="shrink-0 font-medium text-primary hover:underline"
-                      >
-                        {t("header.retryNotifications")}
-                      </button>
-                    </div>
-                  )}
-                  {notifications.length === 0 && notificationsUnavailable ? (
-                    <div role="alert" className="px-4 py-8 text-center text-sm text-muted-foreground">
-                      <p>{t("header.notificationsUnavailable")}</p>
-                      <button
-                        type="button"
-                        onClick={retryNotifications}
-                        className="mt-2 text-xs font-medium text-primary hover:underline"
-                      >
-                        {t("header.retryNotifications")}
-                      </button>
-                    </div>
-                  ) : notifications.length === 0 && (!notificationsHaveLoaded || notificationsLoading) ? (
-                    <div className="py-10 text-center text-sm text-muted-foreground">
-                      {t("common.loading")}
-                    </div>
-                  ) : notifications.length === 0 ? (
-                    <div className="py-10 text-center text-sm text-muted-foreground">
-                      {t("header.allCaughtUp")}
-                    </div>
-                  ) : (
-                    notifications.map((n) => (
-                      <button
-                        type="button"
-                        key={n.id}
-                        onClick={() => handleOpenNotification(n)}
-                        className={cn(
-                          "flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors",
-                          !n.read && "bg-primary/5"
-                        )}
-                      >
-                        <div className="mt-0.5 flex-shrink-0">
-                          {notificationIcon(n.type)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-foreground leading-snug">
-                            {notificationLabel(n, language)}
-                          </p>
-                          {notificationContext(n, language) && (
-                            <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                              {notificationContext(n, language)}
-                            </p>
-                          )}
-                        </div>
-                        {!n.read && (
-                          <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mt-1.5" />
-                        )}
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {canCreateProject && !hideDefaultPrimaryAction && (
             <button
-              onClick={() => setShowNewProject(true)}
-              aria-label={t("header.newProject")}
-              className="upflow-gradient-button flex h-10 items-center gap-2 rounded-full px-3 text-sm font-semibold text-white transition-all hover:-translate-y-0.5 sm:h-11 sm:px-5"
+              type="button"
+              onClick={() => window.location.reload()}
+              aria-label={t("header.refresh")}
+              title={t("header.refresh")}
+              className="upflow-shell-control group inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm backdrop-blur-md transition-all hover:border-sky-400/[0.55] hover:bg-accent hover:text-foreground active:scale-95 dark:border-blue-300/10 dark:bg-[#071024]/80 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] dark:hover:bg-sky-400/10 dark:hover:shadow-[0_0_24px_rgba(59,130,246,0.16)] sm:h-11 sm:w-11"
             >
-              <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">{t("header.newProject")}</span>
+              <RefreshCw className="h-[18px] w-[18px] transition-transform duration-300 group-active:rotate-180" />
             </button>
-          )}
+            <div className="relative" ref={panelRef}>
+              <button
+                ref={notificationToggleRef}
+                type="button"
+                onClick={() => setPanelOpen((v) => !v)}
+                aria-label={t("header.notifications")}
+                aria-expanded={panelOpen}
+                aria-controls="header-notification-panel"
+                className="upflow-shell-control relative flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm backdrop-blur-md transition-all hover:border-sky-400/[0.55] hover:bg-accent hover:text-foreground dark:border-blue-300/10 dark:bg-[#071024]/80 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] dark:hover:bg-sky-400/10 dark:hover:shadow-[0_0_24px_rgba(59,130,246,0.16)] sm:h-11 sm:w-11"
+              >
+                <Bell className="h-[18px] w-[18px]" />
+                {unreadCount > 0 && (
+                  <span className="upflow-pulse-badge absolute right-2 top-2 h-2 w-2 rounded-full bg-upflow-danger ring-2 ring-background" />
+                )}
+              </button>
+
+              {panelOpen && (
+                <div
+                  id="header-notification-panel"
+                  role="dialog"
+                  aria-label={t("header.notifications")}
+                  className="fixed left-4 right-4 top-16 z-[80] overflow-hidden rounded-xl glass-strong sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80"
+                >
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                    <span className="text-sm font-semibold text-foreground">
+                      {t("header.notifications")}
+                    </span>
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={handleMarkAllRead}
+                        className="text-xs text-primary hover:underline"
+                      >
+                        {t("header.markAllRead")}
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-80 overflow-y-auto divide-y divide-border">
+                    {notificationsUnavailable && notifications.length > 0 && (
+                      <div
+                        role="status"
+                        aria-live="polite"
+                        className="flex items-center justify-between gap-3 border-b border-upflow-warning/30 bg-upflow-warning/10 px-4 py-2.5 text-xs text-foreground"
+                      >
+                        <span>{t("header.notificationsUnavailableStale")}</span>
+                        <button
+                          type="button"
+                          onClick={retryNotifications}
+                          className="shrink-0 font-medium text-primary hover:underline"
+                        >
+                          {t("header.retryNotifications")}
+                        </button>
+                      </div>
+                    )}
+                    {notifications.length === 0 && notificationsUnavailable ? (
+                      <div
+                        role="alert"
+                        className="px-4 py-8 text-center text-sm text-muted-foreground"
+                      >
+                        <p>{t("header.notificationsUnavailable")}</p>
+                        <button
+                          type="button"
+                          onClick={retryNotifications}
+                          className="mt-2 text-xs font-medium text-primary hover:underline"
+                        >
+                          {t("header.retryNotifications")}
+                        </button>
+                      </div>
+                    ) : notifications.length === 0 &&
+                      (!notificationsHaveLoaded || notificationsLoading) ? (
+                      <div className="py-10 text-center text-sm text-muted-foreground">
+                        {t("common.loading")}
+                      </div>
+                    ) : notifications.length === 0 ? (
+                      <div className="py-10 text-center text-sm text-muted-foreground">
+                        {t("header.allCaughtUp")}
+                      </div>
+                    ) : (
+                      notifications.map((n) => (
+                        <button
+                          type="button"
+                          key={n.id}
+                          onClick={() => handleOpenNotification(n)}
+                          className={cn(
+                            "flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors",
+                            !n.read && "bg-primary/5",
+                          )}
+                        >
+                          <div className="mt-0.5 flex-shrink-0">
+                            {notificationIcon(
+                              n.type,
+                              getStringData(notificationData(n), "source"),
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-foreground leading-snug">
+                              {notificationLabel(n, language)}
+                            </p>
+                            {notificationContext(n, language) && (
+                              <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                                {notificationContext(n, language)}
+                              </p>
+                            )}
+                          </div>
+                          {!n.read && (
+                            <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mt-1.5" />
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </header>
 
@@ -730,9 +1106,10 @@ export default function Header({
             </div>
             <button
               type="button"
-              onClick={() => setAssistantNotification(null)}
+              onClick={() => void handleDismissAssistantNotification()}
+              disabled={assistantActionPending}
               aria-label={t("header.assistantDismiss")}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-accent hover:text-foreground dark:hover:bg-white/10"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-accent hover:text-foreground disabled:cursor-wait disabled:opacity-50 dark:hover:bg-white/10"
             >
               <X className="h-4 w-4" />
             </button>
@@ -751,8 +1128,9 @@ export default function Header({
           <div className="mt-4 flex items-center justify-end gap-2">
             <button
               type="button"
-              onClick={() => setAssistantNotification(null)}
-              className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition hover:bg-accent hover:text-foreground dark:border-white/10 dark:hover:bg-white/10"
+              onClick={() => void handleDismissAssistantNotification()}
+              disabled={assistantActionPending}
+              className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition hover:bg-accent hover:text-foreground disabled:cursor-wait disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/10"
             >
               {t("header.assistantDismiss")}
             </button>
@@ -760,25 +1138,20 @@ export default function Header({
               type="button"
               onClick={() => {
                 const notification = assistantNotification;
-                setAssistantNotification(null);
-                if (notification) void handleOpenNotification(notification);
+                if (!notification || assistantActionPending) return;
+                setAssistantActionPending(true);
+                void handleOpenNotification(notification).finally(() =>
+                  setAssistantActionPending(false),
+                );
               }}
-              className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
+              disabled={assistantActionPending}
+              className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-wait disabled:opacity-60"
             >
               {t("header.assistantOpen")}
             </button>
           </div>
         </div>
       )}
-
-      <NewProjectDialog
-        open={showNewProject}
-        onClose={() => setShowNewProject(false)}
-        onCreated={(project) => {
-          setShowNewProject(false);
-          router.push(`/projects/${project.id}`);
-        }}
-      />
 
       <CommandPalette />
     </>

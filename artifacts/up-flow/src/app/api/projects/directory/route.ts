@@ -93,16 +93,6 @@ async function directoryCounts(readableScope: Prisma.ProjectWhereInput) {
   return { clients, internal, operations, archived };
 }
 
-async function canCreateProject(userId: string, workspaceId: string, admin: boolean) {
-  if (admin) return true;
-
-  const member = await prisma.workspaceMember.findUnique({
-    where: { workspace_id_user_id: { workspace_id: workspaceId, user_id: userId } },
-  });
-
-  return Boolean(member?.status === "active" && member.role !== "guest");
-}
-
 async function clientItems(
   query: ProjectDirectoryQuery,
   workspaceId: string,
@@ -199,12 +189,11 @@ async function getHandler(req: NextRequest) {
   const projectWhere = buildProjectDirectoryWhere(readableScope, query);
   const canManageProjects = isWorkspaceAdminFor(auth, workspaceId);
 
-  const [counts, page, canCreate] = await Promise.all([
+  const [counts, page] = await Promise.all([
     directoryCounts(readableScope),
     query.tab === "clients"
       ? clientItems(query, workspaceId, projectWhere)
       : projectItems(query, projectWhere),
-    canCreateProject(auth.prismaUser.id, workspaceId, canManageProjects),
   ]);
 
   return NextResponse.json({
@@ -213,7 +202,7 @@ async function getHandler(req: NextRequest) {
     items: page.items,
     nextCursor: page.nextCursor,
     capabilities: {
-      canCreateProject: canCreate,
+      canCreateProject: canManageProjects,
       canManageProjects,
     },
   });

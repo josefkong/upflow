@@ -8,6 +8,10 @@ import { withErrorReporting } from "@/lib/with-error-reporting";
 import { startOfToday, startOfWeekMonday } from "@/lib/time-range";
 import { timeEntryDurationSeconds } from "@/lib/time-entry-duration";
 import { buildPage, parsePagination } from "@/lib/pagination";
+import {
+  canViewClientFinancials,
+  redactFinancialMetadata,
+} from "@/lib/client-financial-access";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +31,10 @@ async function GET_handler(req: NextRequest) {
   }
 
   const superAdmin = isSuperAdmin(auth);
+  const financialsVisible = await canViewClientFinancials(
+    auth,
+    auth.currentWorkspaceId,
+  );
   const { searchParams } = new URL(req.url);
   const { limit } = parsePagination(req, { defaultLimit: 200, maxLimit: 500 });
   const q = searchParams.get("q")?.trim();
@@ -35,7 +43,9 @@ async function GET_handler(req: NextRequest) {
     ? undefined
     : {
         memberships: {
-          some: { workspace_id: { in: auth.memberships.map((m) => m.workspace_id) } },
+          some: {
+            workspace_id: { in: auth.memberships.map((m) => m.workspace_id) },
+          },
         },
       };
 
@@ -111,7 +121,11 @@ async function GET_handler(req: NextRequest) {
         memberships: {
           where: superAdmin
             ? undefined
-            : { workspace_id: { in: auth.memberships.map((m) => m.workspace_id) } },
+            : {
+                workspace_id: {
+                  in: auth.memberships.map((m) => m.workspace_id),
+                },
+              },
           select: {
             workspace_id: true,
             role: true,
@@ -129,7 +143,9 @@ async function GET_handler(req: NextRequest) {
       take: 20,
       orderBy: [{ starts_at: "asc" }, { id: "asc" }],
       include: {
-        attendees: { include: { user: { select: { id: true, name: true, email: true } } } },
+        attendees: {
+          include: { user: { select: { id: true, name: true, email: true } } },
+        },
       },
     }),
     prisma.activityEvent.findMany({
@@ -137,7 +153,9 @@ async function GET_handler(req: NextRequest) {
       take: 20,
       orderBy: [{ created_at: "desc" }, { id: "asc" }],
       include: {
-        actor: { select: { id: true, name: true, email: true, avatar_url: true } },
+        actor: {
+          select: { id: true, name: true, email: true, avatar_url: true },
+        },
       },
     }),
     prisma.timeEntry.findFirst({
@@ -170,7 +188,11 @@ async function GET_handler(req: NextRequest) {
         status: { not: "done" },
       },
       take: DASHBOARD_EVIDENCE_LIMIT,
-      orderBy: [{ due_date: "asc" }, { priority: "desc" }, { created_at: "desc" }],
+      orderBy: [
+        { due_date: "asc" },
+        { priority: "desc" },
+        { created_at: "desc" },
+      ],
       include: {
         assignee: { select: { id: true, name: true, email: true } },
         project: { select: { id: true, name: true } },
@@ -270,11 +292,16 @@ async function GET_handler(req: NextRequest) {
   const todayTimeByUser = new Map<string, number>();
   for (const entry of todayTimeEntries) {
     const duration = timeEntryDurationSeconds(entry);
-    todayTimeByUser.set(entry.user_id, (todayTimeByUser.get(entry.user_id) ?? 0) + duration);
+    todayTimeByUser.set(
+      entry.user_id,
+      (todayTimeByUser.get(entry.user_id) ?? 0) + duration,
+    );
   }
 
   const workload = flattenedUsers.map((member) => {
-    const assignedOpenTasks = workspaceOpenTasks.filter((task) => task.assignee_id === member.id);
+    const assignedOpenTasks = workspaceOpenTasks.filter(
+      (task) => task.assignee_id === member.id,
+    );
     const overdueTasks = assignedOpenTasks.filter(
       (task) => task.due_date && new Date(task.due_date) < todayStart,
     );
@@ -311,16 +338,21 @@ async function GET_handler(req: NextRequest) {
   const overdueByProject = new Map<string, number>();
   for (const task of workspaceOpenTasks) {
     if (task.due_date && new Date(task.due_date) < todayStart) {
-      overdueByProject.set(task.project_id, (overdueByProject.get(task.project_id) ?? 0) + 1);
+      overdueByProject.set(
+        task.project_id,
+        (overdueByProject.get(task.project_id) ?? 0) + 1,
+      );
     }
   }
   const projectsAtRisk = projects
     .map((project) => {
       const reasons: string[] = [];
       const overdue = overdueByProject.get(project.id) ?? 0;
-      if (overdue > 0) reasons.push(`${overdue} overdue open task${overdue === 1 ? "" : "s"}`);
+      if (overdue > 0)
+        reasons.push(`${overdue} overdue open task${overdue === 1 ? "" : "s"}`);
       if (!project.owner_id) reasons.push("No owner");
-      if (!recentProjectIds.has(project.id)) reasons.push("No activity in 7 days");
+      if (!recentProjectIds.has(project.id))
+        reasons.push("No activity in 7 days");
       return { project, reasons };
     })
     .filter((item) => item.reasons.length > 0)
@@ -335,21 +367,29 @@ async function GET_handler(req: NextRequest) {
     .map((company) => {
       const projectTasks = company.projects.flatMap((project) => project.tasks);
       const openTasks = projectTasks.filter((task) => task.status !== "done");
-      const overdueTasks = openTasks.filter((task) => task.due_date && task.due_date < todayStart);
+      const overdueTasks = openTasks.filter(
+        (task) => task.due_date && task.due_date < todayStart,
+      );
       const reasons: string[] = [];
       if (company.projects.length === 0) reasons.push("No linked projects");
       if (company.contacts.length === 0) reasons.push("No contacts");
-      if (overdueTasks.length > 0) reasons.push(`${overdueTasks.length} overdue task${overdueTasks.length === 1 ? "" : "s"}`);
-      if (!recentCompanyIds.has(company.id)) reasons.push("No client activity in 7 days");
-      if (company.contract_value == null) reasons.push("No contract value");
+      if (overdueTasks.length > 0)
+        reasons.push(
+          `${overdueTasks.length} overdue task${overdueTasks.length === 1 ? "" : "s"}`,
+        );
+      if (!recentCompanyIds.has(company.id))
+        reasons.push("No client activity in 7 days");
+      if (financialsVisible && company.contract_value == null) {
+        reasons.push("No contract value");
+      }
       return {
         company: {
           id: company.id,
           name: company.name,
           commercial_status: company.commercial_status,
           status: company.status,
-          contract_value: company.contract_value,
-          commission: company.commission,
+          contract_value: financialsVisible ? company.contract_value : null,
+          commission: financialsVisible ? company.commission : null,
         },
         reasons,
         open_tasks: openTasks.length,
@@ -358,24 +398,46 @@ async function GET_handler(req: NextRequest) {
     })
     .filter((item) => item.reasons.length > 0)
     .slice(0, 20);
-  const revenueSnapshot = {
-    active_clients: companies.filter((company) => company.status !== "archived").length,
-    total_contract_value: companies.reduce((sum, company) => sum + (company.contract_value ?? 0), 0),
-    total_commission: companies.reduce((sum, company) => sum + (company.commission ?? 0), 0),
-    clients_without_contract_value: companies.filter((company) => company.contract_value == null).length,
-    top_clients: companies
-      .filter((company) => company.contract_value != null)
-      .sort((a, b) => (b.contract_value ?? 0) - (a.contract_value ?? 0))
-      .slice(0, 5)
-      .map((company) => ({
-        id: company.id,
-        name: company.name,
-        contract_value: company.contract_value,
-        commission: company.commission,
-      })),
-  };
+  const revenueSnapshot = financialsVisible
+    ? {
+        active_clients: companies.filter(
+          (company) => company.status !== "archived",
+        ).length,
+        total_contract_value: companies.reduce(
+          (sum, company) => sum + (company.contract_value ?? 0),
+          0,
+        ),
+        total_commission: companies.reduce(
+          (sum, company) => sum + (company.commission ?? 0),
+          0,
+        ),
+        clients_without_contract_value: companies.filter(
+          (company) => company.contract_value == null,
+        ).length,
+        top_clients: companies
+          .filter((company) => company.contract_value != null)
+          .sort((a, b) => (b.contract_value ?? 0) - (a.contract_value ?? 0))
+          .slice(0, 5)
+          .map((company) => ({
+            id: company.id,
+            name: company.name,
+            contract_value: company.contract_value,
+            commission: company.commission,
+          })),
+      }
+    : {
+        active_clients: companies.filter(
+          (company) => company.status !== "archived",
+        ).length,
+        total_contract_value: 0,
+        total_commission: 0,
+        clients_without_contract_value: 0,
+        top_clients: [],
+      };
 
-  const todayEntriesForMe = todayTimeEntries.filter((entry) => entry.user_id === auth.prismaUser.id);
+  const todayEntriesForMe = todayTimeEntries.filter(
+    (entry) => entry.user_id === auth.prismaUser.id,
+  );
   const totalSecondsToday = todayEntriesForMe.reduce((sum, entry) => {
     return sum + timeEntryDurationSeconds(entry);
   }, 0);
@@ -391,6 +453,7 @@ async function GET_handler(req: NextRequest) {
       week_entries: weekTimeEntries,
     },
     command_center: {
+      financials_visible: financialsVisible,
       urgent_actions: { items: urgentActions, count: urgentActions.length },
       team_workload: { items: workload, count: workload.length },
       time_today: {
@@ -399,7 +462,16 @@ async function GET_handler(req: NextRequest) {
         entries: todayEntriesForMe,
       },
       meetings_today: { items: calendarEvents, count: calendarEvents.length },
-      recent_activity: { items: activity, count: activity.length },
+      recent_activity: {
+        items: activity.map((event) => ({
+          ...event,
+          metadata: redactFinancialMetadata(
+            event.metadata,
+            financialsVisible,
+          ),
+        })),
+        count: activity.length,
+      },
       projects_at_risk: {
         items: projectsAtRisk,
         count: projectsAtRisk.length,

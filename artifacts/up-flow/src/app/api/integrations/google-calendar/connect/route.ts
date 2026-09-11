@@ -3,6 +3,7 @@ import { requireCurrentWorkspace } from "@/lib/api/scope";
 import { requireAuth } from "@/lib/auth-response";
 import {
   createGoogleCalendarConnectUrl,
+  getGoogleCalendarBrowserOrigin,
   getGoogleCalendarConfig,
   getGoogleCalendarLoginRecoveryUrl,
   isGoogleCalendarCallbackOrigin,
@@ -30,7 +31,8 @@ async function GET_handler(req: NextRequest) {
   // The provider always returns to GOOGLE_CALENDAR_REDIRECT_URI. Do not
   // create an OAuth state from an alias host whose browser session cannot be
   // read on that canonical callback host.
-  if (!isGoogleCalendarCallbackOrigin(req.url, config)) {
+  const browserOrigin = getGoogleCalendarBrowserOrigin(req.url, req.headers);
+  if (!isGoogleCalendarCallbackOrigin(browserOrigin, config)) {
     const response = NextResponse.redirect(
       getGoogleCalendarLoginRecoveryUrl(config, "official_origin_required"),
     );

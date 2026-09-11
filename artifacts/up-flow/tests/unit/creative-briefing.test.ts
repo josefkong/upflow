@@ -252,7 +252,7 @@ test("Design Queue receives a Forms view and secured reference upload flow", () 
   assert.match(form, /creativeBrief\.recentBrands/);
   assert.match(form, /creativeBrief\.manualUnitHint/);
   assert.match(form, /creativeBrief\.reviewAndSend/);
-  assert.match(projectPage, /onDesignerRosterConfigured=\{loadData\}/);
+  assert.match(projectPage, /onDesignerRosterConfigured=\{\(\) => loadData\(true\)\}/);
   assert.match(form, /creativeBrief\.requester/);
   assert.doesNotMatch(form, /toast\.error\(t\("creativeBrief\.brandRequired"\)\)/);
   assert.match(form, /brandName: selectedCompany\?\.name \?\? ""/);

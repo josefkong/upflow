@@ -16,10 +16,8 @@ test("calendar protects the current range from stale requests and exposes retry 
   assert.match(page, /requestId !== calendarRequestIdRef\.current/);
   assert.match(page, /loadedCalendarRange === calendarRangeKey/);
   assert.match(page, /failedCalendarRange === calendarRangeKey/);
-  assert.match(page, /calendarHasLoaded \? tasks : \[\]/);
   assert.match(page, /calendarHasLoaded \? events : \[\]/);
   assert.match(page, /calendarIsLoading = !calendarHasLoaded && !calendarLoadError/);
-  assert.match(page, /Unable to load tasks/);
   assert.match(page, /Unable to load calendar events/);
   assert.match(page, /setLoadedCalendarRange\(rangeKey\)/);
   assert.match(page, /setFailedCalendarRange\(rangeKey\)/);

@@ -40,6 +40,7 @@ export interface Project {
   responsible_salesperson_id?: string | null;
   initial_notes?: string | null;
   due_date: string | null;
+  position?: number;
   created_at: string;
   owner: ProjectOwner;
   space?: { id: string; name: string; icon: string | null } | null;
@@ -54,6 +55,7 @@ export interface Project {
   } | null;
   _count: { tasks: number };
   pending_todo_count?: number;
+  flow_task_count?: number;
   capabilities?: {
     canContribute: boolean;
     canManageMembers: boolean;
@@ -71,6 +73,7 @@ export interface Space {
   workspace?: { id: string; name: string } | null;
   _count?: { projects: number };
   pending_todo_count?: number;
+  flow_task_count?: number;
 }
 
 export interface Folder {
@@ -95,10 +98,19 @@ export interface TaskAssignee {
   department_name?: string | null;
 }
 
+export interface TaskFollower {
+  id: string;
+  task_id: string;
+  user_id: string;
+  created_at: string;
+  user: TaskAssignee;
+}
+
 export interface TaskProject {
   id: string;
   name: string;
   workspace_id?: string;
+  space?: { id: string; name: string } | null;
 }
 
 export interface Subtask {
@@ -126,13 +138,123 @@ export interface Task {
   position: number;
   created_at: string;
   assignee: TaskAssignee | null;
+  followers?: TaskFollower[];
   project: TaskProject | null;
   subtasks?: Subtask[];
   onboarding_link?: TaskOnboardingLink | null;
   marketing_b2b_onboarding_form?: MarketingB2BOnboardingFormSummary | null;
   marketing_b2c_onboarding_form?: MarketingB2COnboardingFormSummary | null;
+  commercial_lead?: CommercialLead | null;
+  commercial_follow_up?: CommercialLead | null;
+  commercial_contract_handoff?: CommercialLead | null;
+  commercial_finance_contract?: CommercialLead | null;
   custom_field_values?: TaskCustomFieldValue[];
   _count?: { comments: number; subtasks: number };
+}
+
+export interface CommercialLead {
+  id: string;
+  task_id: string;
+  brand_name: string;
+  owner_name: string;
+  owner_email: string;
+  instagram: string;
+  monthly_revenue: string | number;
+  whatsapp: string;
+  notes: string;
+  presentation_starts_at: string | null;
+  presentation_ends_at: string | null;
+  presentation_event_id: string | null;
+  assignee_id: string;
+  company_type: "B2B" | "B2C" | "Ambos";
+  observations: string | null;
+  stage: string;
+  presentation_confirmation_requested_at: string | null;
+  presentation_confirmed_at: string | null;
+  qualified_at: string | null;
+  archived_at: string | null;
+  archive_reason: "not_qualified" | "not_closed" | null;
+  group_up_plan: "starter" | "growth" | "none" | null;
+  group_up_monthly_fee: string | number | null;
+  up_zero_plan: "essential" | "elite" | "pro" | "none" | null;
+  up_zero_monthly_fee: string | number | null;
+  up_zero_implementation_fee: string | number | null;
+  negotiated_scope: string[] | null;
+  negotiation_checklist_completed_at: string | null;
+  proposal_file_name: string | null;
+  proposal_uploaded_at: string | null;
+  next_follow_up_at: string | null;
+  follow_up_count: number;
+  follow_up_task_id: string | null;
+  follow_up_task?: {
+    id: string;
+    project_id: string;
+    created_at?: string;
+  } | null;
+  follow_up_checkpoints?: Array<{
+    id: string;
+    stage: "first_contact" | "second_contact" | "final_contact";
+    completed_at: string;
+    completed_by: {
+      id: string;
+      name: string | null;
+      email: string;
+    } | null;
+  }>;
+  follow_up_stage:
+    | "first_contact"
+    | "second_contact"
+    | "final_contact"
+    | "awaiting_decision"
+    | "completed"
+    | "withdrawn"
+    | null;
+  follow_up_notification_sent_at: string | null;
+  contract_handoff_task_id: string | null;
+  contract_handoff_task?: {
+    id: string;
+    project_id: string;
+    status: string;
+    project: { id: string; name: string };
+  } | null;
+  finance_contract_task_id: string | null;
+  finance_contract_task?: {
+    id: string;
+    project_id: string;
+    status: string;
+    assignee: { id: string; name: string; email: string } | null;
+    project: { id: string; name: string };
+  } | null;
+  contract_cnpj: string | null;
+  contract_legal_name: string | null;
+  contract_plan: string | null;
+  contract_services: string[] | null;
+  contract_monthly_fee: string | number | null;
+  contract_confirmed_at: string | null;
+  can_advance_contract?: boolean;
+  presentation_integration: {
+    event_id: string;
+    status:
+      | "not_configured"
+      | "not_connected"
+      | "pending"
+      | "syncing"
+      | "failed"
+      | "ready";
+    starts_at: string;
+    ends_at: string | null;
+    meeting_url: string | null;
+    google_event_url: string | null;
+    calendar_label: string | null;
+    participants: Array<{
+      id: string;
+      name: string;
+      email: string;
+      kind: "lead" | "team";
+    }>;
+    last_synced_at: string | null;
+    last_error: string | null;
+  } | null;
 }
 
 export type TaskOnboardingFormKind =
@@ -200,6 +322,12 @@ export interface TaskOnboardingLink {
   progress: number;
   href: string;
   action?: TaskOnboardingAction | null;
+  scheduling?: Array<{
+    id: string;
+    title: string;
+    scheduled: boolean;
+    scheduled_at: string | null;
+  }>;
 }
 
 export type CustomFieldType =
@@ -366,7 +494,12 @@ export interface CalendarEventAttendee {
   id: string;
   user_id: string;
   created_at?: string;
-  user?: { id: string; name: string; email: string; avatar_url?: string | null };
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+    avatar_url?: string | null;
+  };
 }
 
 export interface CalendarEventReminder {
@@ -413,15 +546,45 @@ export interface CalendarEvent {
   cancelled_by: string | null;
   location: string | null;
   meeting_url: string | null;
+  google_meet_requested?: boolean;
   color: string | null;
   created_at: string;
   updated_at: string;
-  creator?: { id: string; name: string; email: string; avatar_url?: string | null } | null;
+  creator?: {
+    id: string;
+    name: string;
+    email: string;
+    avatar_url?: string | null;
+  } | null;
   project?: { id: string; name: string } | null;
-  task?: { id: string; title: string } | null;
+  task?: {
+    id: string;
+    title: string;
+    assignee?: { id: string; name: string; email: string } | null;
+    followers?: Array<{
+      user: { id: string; name: string; email: string };
+    }>;
+  } | null;
   company?: { id: string; name: string } | null;
   space?: { id: string; name: string; icon?: string | null } | null;
-  responsible?: { id: string; name: string; email: string; avatar_url?: string | null } | null;
+  responsible?: {
+    id: string;
+    name: string;
+    email: string;
+    avatar_url?: string | null;
+  } | null;
+  commercial_lead_presentation?: {
+    id: string;
+    brand_name: string;
+    owner_name: string;
+    owner_email: string;
+    instagram: string;
+    monthly_revenue: string | number;
+    whatsapp: string;
+    company_type: string;
+    observations: string | null;
+    assignee: { id: string; name: string; email: string };
+  } | null;
   cancelled_by_user?: { id: string; name: string; email: string } | null;
   attendees?: CalendarEventAttendee[];
   reminders?: CalendarEventReminder[];
@@ -460,7 +623,12 @@ export interface ActivityEvent {
   company_id?: string | null;
   metadata: Record<string, unknown> | null;
   created_at: string;
-  actor?: { id: string; name: string; email: string; avatar_url?: string | null } | null;
+  actor?: {
+    id: string;
+    name: string;
+    email: string;
+    avatar_url?: string | null;
+  } | null;
   company?: { id: string; name: string } | null;
 }
 
@@ -487,6 +655,37 @@ export interface CompanyNote {
 }
 
 export type SalesChannel = "WHOLESALE" | "RETAIL" | "BOTH";
+
+export interface ClientCreativeWorkItem {
+  id: string;
+  title: string;
+  status: "todo" | "in_progress" | "done";
+  stage: string;
+  priority: "low" | "medium" | "high";
+  kind: "video" | "static" | "creative";
+  formats: string | null;
+  requester: string | null;
+  due_date: string | null;
+  created_at: string;
+  last_updated_at: string;
+  assignee: { id: string; name: string; email: string } | null;
+  project: {
+    id: string;
+    name: string;
+    space: { id: string; name: string } | null;
+  };
+}
+
+export interface ClientCreativeWork {
+  items: ClientCreativeWorkItem[];
+  summary: {
+    total: number;
+    open: number;
+    in_progress: number;
+    completed: number;
+    overdue: number;
+  };
+}
 
 export interface Company {
   id: string;
@@ -545,6 +744,8 @@ export interface Company {
   notes_log?: CompanyNote[];
   projects?: Pick<Project, "id" | "name" | "status" | "due_date">[];
   tasks?: Pick<Task, "id" | "title" | "status" | "priority" | "due_date">[];
+  creative_tracking_visible?: boolean;
+  creative_work?: ClientCreativeWork;
   calendar_events?: CalendarEvent[];
   activity_events?: ActivityEvent[];
   client_onboardings?: ClientOnboarding[];

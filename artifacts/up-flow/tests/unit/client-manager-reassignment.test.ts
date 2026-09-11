@@ -24,7 +24,7 @@ test("company manager reassignment only accepts active non-guest workspace membe
   assert.match(detailPage, /hasWorkspaceAdminAccess\(user\)/);
   assert.match(detailPage, /const canManageClient = hasWorkspaceAdminAccess\(user\)/);
   assert.match(detailPage, /\/api\/users\?workspace_id=\$\{encodeURIComponent\(company\.workspace_id\)\}/);
-  assert.match(detailPage, /workspace_status === "active" && member\.workspace_role !== "guest"/);
+  assert.match(detailPage, /workspace_status === "active"\s*&&\s*member\.workspace_role !== "guest"/);
   assert.match(detailPage, /body: JSON\.stringify\(\{ owner_id: managerId \}\)/);
   assert.match(detailPage, /await loadCompany\(\{ silent: true \}\)/);
   assert.match(translations, /"clientDetail\.changeManager": "Alterar responsável"/);

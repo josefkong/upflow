@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import {
@@ -71,16 +70,13 @@ async function POST_handler(req: NextRequest) {
     const devLogin = await tryDevPasswordLogin(email, password);
     if (devLogin) return devLogin;
 
-    const supabase = await createSupabaseServerClient();
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      logError("api:auth/login:invalid-credentials", error, { email });
-      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
-    }
-    if (!data.session) {
-      return NextResponse.json({ error: "No session created" }, { status: 401 });
-    }
-    return NextResponse.json({ ok: true });
+    return NextResponse.json(
+      {
+        error: "Password sign-in is disabled. Continue with Google.",
+        code: "GOOGLE_SIGN_IN_REQUIRED",
+      },
+      { status: 410 },
+    );
   } catch (err) {
     // Forward the real exception (stack, cause) to the tracker BEFORE we
     // serialize a generic 500 to the client. Without this, on-call would

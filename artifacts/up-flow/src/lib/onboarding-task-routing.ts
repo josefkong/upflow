@@ -3,9 +3,14 @@ import {
   isFinanceCampaignStartedAutomationKey,
   routeForOnboardingChecklistItem,
 } from "@/lib/onboarding-routing";
+import {
+  onboardingMeetingName,
+  onboardingMeetingTitle,
+} from "@/lib/onboarding-meeting-copy";
 
 const UP_ZERO_CONFIGURATION_AUTOMATION_KEY = "up_zero_website_configuration";
 const UP_ZERO_CONFIGURATION_TASK_TITLE = "configure up zero website";
+const SHARED_ONBOARDING_TASK_AUTOMATION_KEY = "shared_onboarding:task";
 
 export type WorkflowFormKind = TaskOnboardingFormKind;
 
@@ -109,6 +114,14 @@ function isMarketingB2CFormTask(task: Task) {
 }
 
 export function workflowFormKind(task: Task): WorkflowFormKind | null {
+  if (
+    task.commercial_lead ||
+    task.commercial_follow_up ||
+    task.commercial_contract_handoff ||
+    task.commercial_finance_contract
+  ) {
+    return null;
+  }
   if (isUpZeroConfigurationTask(task)) return null;
   const explicitAction = task.onboarding_link?.action;
   if (explicitAction?.kind === "form") return explicitAction.form_kind;
@@ -128,19 +141,22 @@ function workflowFormHref(task: Task, fallbackProjectId?: string | null) {
 }
 
 function meetingKind(task: Task) {
-  const department = task.onboarding_link?.department?.trim();
-  const normalized = department?.toLowerCase() ?? "";
-  if (normalized.includes("marketing b2b")) return "Marketing B2B onboarding meeting";
-  if (normalized.includes("marketing b2c")) return "Marketing B2C onboarding meeting";
-  if (department) return `${department} onboarding meeting`;
-  return "Onboarding meeting";
+  return onboardingMeetingName({
+    automationKey: task.onboarding_link?.automation_key,
+    department: task.onboarding_link?.department,
+  });
 }
 
 function meetingTitle(task: Task) {
   const company = task.onboarding_link?.company_name?.trim();
-  const kind = meetingKind(task);
-  if (company) return `${company} - ${kind}`;
-  return task.title.replace(/^Onboarding:\s*/i, "");
+  if (company) {
+    return onboardingMeetingTitle({
+      companyName: company,
+      automationKey: task.onboarding_link?.automation_key,
+      department: task.onboarding_link?.department,
+    });
+  }
+  return meetingKind(task);
 }
 
 function meetingDescription(task: Task) {
@@ -178,7 +194,14 @@ export function getOnboardingTaskAction(
   task: Task,
   fallbackProjectId?: string | null,
 ): OnboardingTaskAction | null {
+  if (task.commercial_lead || task.commercial_follow_up) return null;
   if (isUpZeroConfigurationTask(task)) return null;
+  if (
+    task.onboarding_link?.automation_key ===
+    SHARED_ONBOARDING_TASK_AUTOMATION_KEY
+  ) {
+    return null;
+  }
 
   const explicitAction = task.onboarding_link?.action;
   if (explicitAction?.kind === "form") {

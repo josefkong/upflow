@@ -18,6 +18,11 @@ import {
 import { toast } from "sonner";
 import Header from "@/components/layout/header";
 import { useLanguage } from "@/components/language-provider";
+import {
+  formatBrazilianMobilePhone,
+  formatPersonName,
+  isValidBrazilianMobilePhone,
+} from "@/lib/user-profile";
 
 const settingsCards = [
   {
@@ -83,9 +88,9 @@ export default function SettingsPage() {
         }
         if (!active) return;
         const nextProfile = {
-          name: data.name ?? "",
+          name: formatPersonName(data.name ?? ""),
           email: data.email ?? "",
-          phone: data.phone ?? "",
+          phone: formatBrazilianMobilePhone(data.phone ?? ""),
         };
         setProfile(nextProfile);
         setInitialEmail(nextProfile.email);
@@ -108,6 +113,19 @@ export default function SettingsPage() {
 
   async function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const normalizedProfile = {
+      name: formatPersonName(profile.name.trim()),
+      email: profile.email.trim(),
+      phone: formatBrazilianMobilePhone(profile.phone),
+    };
+    if (!isValidBrazilianMobilePhone(normalizedProfile.phone)) {
+      const message = t("settings.phoneFormatError");
+      setProfileError(message);
+      toast.error(message);
+      return;
+    }
+
+    setProfile(normalizedProfile);
     setSavingProfile(true);
     setProfileError(null);
 
@@ -115,11 +133,7 @@ export default function SettingsPage() {
       const response = await fetch("/api/auth/me", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: profile.name,
-          email: profile.email,
-          phone: profile.phone.trim() ? profile.phone : null,
-        }),
+        body: JSON.stringify(normalizedProfile),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -127,9 +141,9 @@ export default function SettingsPage() {
       }
 
       const nextProfile = {
-        name: data.name ?? "",
+        name: formatPersonName(data.name ?? ""),
         email: data.email ?? "",
-        phone: data.phone ?? "",
+        phone: formatBrazilianMobilePhone(data.phone ?? ""),
       };
       setProfile(nextProfile);
       setInitialEmail(nextProfile.email);
@@ -194,13 +208,18 @@ export default function SettingsPage() {
                 <span className="flex items-center gap-2">
                   <UserRound className="h-4 w-4 text-muted-foreground" />
                   {t("settings.name")}
+                  <span className="text-destructive" aria-hidden="true">*</span>
                 </span>
                 <input
                   value={profile.name}
-                  onChange={(event) => setProfile((current) => ({ ...current, name: event.target.value }))}
+                  onChange={(event) => setProfile((current) => ({
+                    ...current,
+                    name: formatPersonName(event.target.value),
+                  }))}
                   className={inputClassName}
                   disabled={loadingProfile || savingProfile}
                   placeholder={t("settings.yourName")}
+                  autoComplete="name"
                   required
                 />
               </label>
@@ -209,6 +228,7 @@ export default function SettingsPage() {
                 <span className="flex items-center gap-2">
                   <Mail className="h-4 w-4 text-muted-foreground" />
                   {t("settings.email")}
+                  <span className="text-destructive" aria-hidden="true">*</span>
                 </span>
                 <input
                   type="email"
@@ -217,6 +237,7 @@ export default function SettingsPage() {
                   className={inputClassName}
                   disabled={loadingProfile || savingProfile}
                   placeholder="you@example.com"
+                  autoComplete="email"
                   required
                 />
               </label>
@@ -225,13 +246,24 @@ export default function SettingsPage() {
                 <span className="flex items-center gap-2">
                   <Phone className="h-4 w-4 text-muted-foreground" />
                   {t("settings.phone")}
+                  <span className="text-destructive" aria-hidden="true">*</span>
                 </span>
                 <input
+                  type="tel"
                   value={profile.phone}
-                  onChange={(event) => setProfile((current) => ({ ...current, phone: event.target.value }))}
+                  onChange={(event) => setProfile((current) => ({
+                    ...current,
+                    phone: formatBrazilianMobilePhone(event.target.value),
+                  }))}
                   className={inputClassName}
                   disabled={loadingProfile || savingProfile}
-                  placeholder={t("settings.optional")}
+                  placeholder={t("settings.phonePlaceholder")}
+                  inputMode="numeric"
+                  autoComplete="tel-national"
+                  maxLength={15}
+                  pattern="\(\d{2}\) \d{5}-\d{4}"
+                  title={t("settings.phoneFormatError")}
+                  required
                 />
               </label>
             </div>

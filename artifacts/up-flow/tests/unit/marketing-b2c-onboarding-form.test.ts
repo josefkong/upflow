@@ -51,15 +51,12 @@ test("Marketing B2C onboarding uses routed department form tasks", () => {
   assert.match(helper, /servicesRevealB2C/);
   assert.match(helper, /b2cFormRepair/);
   assert.match(helper, /onboarding_enabled: true/);
-  assert.match(helper, /const formServiceAlreadyAssigned = b2bFormServiceKeys\.has\(serviceMapKey\) \|\| b2cFormServiceKeys\.has\(serviceMapKey\)/);
+  assert.match(helper, /const formServiceAlreadyAssigned\s*=\s*b2bFormServiceKeys\.has\(serviceMapKey\)\s*\|\|\s*b2cFormServiceKeys\.has\(serviceMapKey\)/);
   assert.match(helper, /const dedicatedServiceTask = shouldCreateDedicatedServiceTask\(service\)/);
   assert.match(helper, /formServiceAlreadyAssigned && !dedicatedServiceTask/);
   assert.match(helper, /marketingOnboardingProjectId = b2cProjectId/);
   assert.match(helper, /const dedicatedWorkflowRoute = marketingFormRoute \?\? "marketing_b2b"/);
-  assert.match(
-    helper,
-    /resolveOnboardingRouteProjectId\(tx,\s*\{[\s\S]*?route: dedicatedWorkflowRoute/,
-  );
+  assert.match(helper, /queueProjectId\(dedicatedWorkflowRoute\)/);
   assert.match(
     helper,
     /const b2cMeetingTask = await createTask\(\{[\s\S]*?project_id: b2cProjectId,[\s\S]*?title: "Onboarding: schedule Marketing B2C kickoff meeting"/,
@@ -67,7 +64,7 @@ test("Marketing B2C onboarding uses routed department form tasks", () => {
   assert.match(helper, /input\.responsibleDepartmentId[\s\S]*tx\.department\.findFirst/);
   assert.match(helper, /space:\s*\{\s*select:\s*\{\s*id:\s*true,\s*name:\s*true\s*\}\s*\}/);
   assert.match(helper, /sourceProjectSpaceName = sourceProject\?\.space\?\.name/);
-  assert.match(helper, /responsibleDepartmentName = input\.responsibleDepartmentName \?\? responsibleDepartment\?\.name \?\? sourceProjectSpaceName/);
+  assert.match(helper, /responsibleDepartmentName\s*=\s*input\.responsibleDepartmentName\s*\?\?\s*responsibleDepartment\?\.name\s*\?\?\s*sourceProjectSpaceName/);
   assert.match(
     helper,
     /marketingFormRouteForOnboarding\([\s\S]*company\.service_type,[\s\S]*responsibleDepartmentName/,

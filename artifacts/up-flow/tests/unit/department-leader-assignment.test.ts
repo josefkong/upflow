@@ -47,7 +47,7 @@ test("Teams cards render the stored leader and expose an admin editor", () => {
   assert.match(component, /disabled=\{savingLeader\}/);
   assert.match(component, /await onUpdateLeader\(event\.target\.value \|\| null\)/);
   assert.match(page, /return updateDepartmentLeader\(departmentId, leaderId\)/);
-  assert.match(page, /payload\.error \|\| "Failed to update department leader"/);
+  assert.match(page, /t\("team\.couldNotUpdateDepartmentLeader"\)/);
   assert.match(overview, /leader_id: true/);
   assert.match(overview, /avatar_url: true/);
 });

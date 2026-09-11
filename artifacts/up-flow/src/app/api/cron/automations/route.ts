@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { runAutomationRules } from "@/lib/automation-runner";
 import { withErrorReporting } from "@/lib/with-error-reporting";
+import { runCommercialLeadAutomations } from "@/lib/commercial-lead-automation";
+import { processCalendarEventReminders } from "@/lib/calendar-notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,7 @@ async function GET_handler(req: NextRequest) {
 
   const now = new Date();
   const dayKey = now.toISOString().slice(0, 10);
+  const calendarReminders = await processCalendarEventReminders(now);
   const workspaces = await prisma.workspace.findMany({
     take: 50,
     orderBy: [{ created_at: "asc" }, { id: "asc" }],
@@ -41,18 +44,22 @@ async function GET_handler(req: NextRequest) {
     }
     results.push({
       workspace_id: workspace.id,
-      result: await runAutomationRules({
-        workspaceId: workspace.id,
-        actorId,
-        now,
-        dedupePrefix: `cron:${dayKey}`,
-      }),
+      result: {
+        rules: await runAutomationRules({
+          workspaceId: workspace.id,
+          actorId,
+          now,
+          dedupePrefix: `cron:${dayKey}`,
+        }),
+        commercial_leads: await runCommercialLeadAutomations({ workspaceId: workspace.id, now }),
+      },
     });
   }
 
   return NextResponse.json({
     ran_at: now.toISOString(),
     workspace_count: workspaces.length,
+    calendar_reminders: calendarReminders,
     results,
   });
 }

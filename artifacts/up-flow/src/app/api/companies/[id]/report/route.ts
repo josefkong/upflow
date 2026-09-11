@@ -4,6 +4,11 @@ import { requireAuth } from "@/lib/auth-response";
 import { parseDateParam, startOfWeekMonday } from "@/lib/time-range";
 import { withErrorReporting } from "@/lib/with-error-reporting";
 import { timeEntryDurationSeconds } from "@/lib/time-entry-duration";
+import {
+  CLIENTS_REGISTRY_CONTEXT_PARAM,
+  canViewClientFinancialsInContext,
+  redactClientFinancials,
+} from "@/lib/client-financial-access";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +37,10 @@ async function GET_handler(
   const from = parseDateParam(searchParams.get("from")) ?? defaultFrom;
   const to = parseDateParam(searchParams.get("to")) ?? defaultTo;
   if (to <= from) {
-    return NextResponse.json({ error: "Report end date must be after start date" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Report end date must be after start date" },
+      { status: 400 },
+    );
   }
 
   const company = await prisma.company.findFirst({
@@ -52,76 +60,107 @@ async function GET_handler(
       },
     },
   });
-  if (!company) return NextResponse.json({ error: "Client not found" }, { status: 404 });
+  if (!company)
+    return NextResponse.json({ error: "Client not found" }, { status: 404 });
+  const financialsVisible = await canViewClientFinancialsInContext(
+    auth,
+    auth.currentWorkspaceId,
+    searchParams.get(CLIENTS_REGISTRY_CONTEXT_PARAM),
+  );
 
-  const [tasks, meetings, timeEntries, notes, activity, reportHistory] = await Promise.all([
-    prisma.task.findMany({
-      where: {
-        project: { workspace_id: auth.currentWorkspaceId },
-        AND: [
-          { OR: [{ company_id: company.id }, { project: { company_id: company.id } }] },
-          {
-            OR: [
-              { created_at: { gte: from, lt: to } },
-              { due_date: { gte: from, lt: to } },
-            ],
+  const [tasks, meetings, timeEntries, notes, activity, reportHistory] =
+    await Promise.all([
+      prisma.task.findMany({
+        where: {
+          project: { workspace_id: auth.currentWorkspaceId },
+          AND: [
+            {
+              OR: [
+                { company_id: company.id },
+                { project: { company_id: company.id } },
+              ],
+            },
+            {
+              OR: [
+                { created_at: { gte: from, lt: to } },
+                { due_date: { gte: from, lt: to } },
+              ],
+            },
+          ],
+        },
+        orderBy: [{ due_date: "asc" }, { created_at: "desc" }, { id: "asc" }],
+        include: {
+          assignee: { select: { id: true, name: true, email: true } },
+          project: { select: { id: true, name: true } },
+        },
+      }),
+      prisma.calendarEvent.findMany({
+        where: {
+          workspace_id: auth.currentWorkspaceId,
+          company_id: company.id,
+          starts_at: { gte: from, lt: to },
+        },
+        orderBy: [{ starts_at: "asc" }, { id: "asc" }],
+        include: {
+          attendees: {
+            include: {
+              user: { select: { id: true, name: true, email: true } },
+            },
           },
-        ],
-      },
-      orderBy: [{ due_date: "asc" }, { created_at: "desc" }, { id: "asc" }],
-      include: {
-        assignee: { select: { id: true, name: true, email: true } },
-        project: { select: { id: true, name: true } },
-      },
-    }),
-    prisma.calendarEvent.findMany({
-      where: {
-        workspace_id: auth.currentWorkspaceId,
-        company_id: company.id,
-        starts_at: { gte: from, lt: to },
-      },
-      orderBy: [{ starts_at: "asc" }, { id: "asc" }],
-      include: { attendees: { include: { user: { select: { id: true, name: true, email: true } } } } },
-    }),
-    prisma.timeEntry.findMany({
-      where: {
-        workspace_id: auth.currentWorkspaceId,
-        project: { company_id: company.id },
-        started_at: { gte: from, lt: to },
-      },
-      orderBy: [{ started_at: "desc" }, { id: "asc" }],
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-        project: { select: { id: true, name: true } },
-        task: { select: { id: true, title: true } },
-      },
-    }),
-    prisma.companyNote.findMany({
-      where: { workspace_id: auth.currentWorkspaceId, company_id: company.id, created_at: { gte: from, lt: to } },
-      orderBy: [{ created_at: "desc" }, { id: "asc" }],
-      include: { author: { select: { id: true, name: true, email: true } } },
-    }),
-    prisma.activityEvent.findMany({
-      where: { workspace_id: auth.currentWorkspaceId, company_id: company.id, created_at: { gte: from, lt: to } },
-      orderBy: [{ created_at: "desc" }, { id: "asc" }],
-      include: { actor: { select: { id: true, name: true, email: true } } },
-      take: 100,
-    }),
-    prisma.clientReport.findMany({
-      where: { workspace_id: auth.currentWorkspaceId, company_id: company.id },
-      orderBy: [{ created_at: "desc" }, { id: "asc" }],
-      take: 10,
-      include: {
-        author: { select: { id: true, name: true, email: true } },
-        approver: { select: { id: true, name: true, email: true } },
-        sender: { select: { id: true, name: true, email: true } },
-      },
-    }),
-  ]);
+        },
+      }),
+      prisma.timeEntry.findMany({
+        where: {
+          workspace_id: auth.currentWorkspaceId,
+          project: { company_id: company.id },
+          started_at: { gte: from, lt: to },
+        },
+        orderBy: [{ started_at: "desc" }, { id: "asc" }],
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+          project: { select: { id: true, name: true } },
+          task: { select: { id: true, title: true } },
+        },
+      }),
+      prisma.companyNote.findMany({
+        where: {
+          workspace_id: auth.currentWorkspaceId,
+          company_id: company.id,
+          created_at: { gte: from, lt: to },
+        },
+        orderBy: [{ created_at: "desc" }, { id: "asc" }],
+        include: { author: { select: { id: true, name: true, email: true } } },
+      }),
+      prisma.activityEvent.findMany({
+        where: {
+          workspace_id: auth.currentWorkspaceId,
+          company_id: company.id,
+          created_at: { gte: from, lt: to },
+        },
+        orderBy: [{ created_at: "desc" }, { id: "asc" }],
+        include: { actor: { select: { id: true, name: true, email: true } } },
+        take: 100,
+      }),
+      prisma.clientReport.findMany({
+        where: {
+          workspace_id: auth.currentWorkspaceId,
+          company_id: company.id,
+        },
+        orderBy: [{ created_at: "desc" }, { id: "asc" }],
+        take: 10,
+        include: {
+          author: { select: { id: true, name: true, email: true } },
+          approver: { select: { id: true, name: true, email: true } },
+          sender: { select: { id: true, name: true, email: true } },
+        },
+      }),
+    ]);
 
   const openTasks = tasks.filter((task) => task.status !== "done");
   const completedTasks = tasks.filter((task) => task.status === "done");
-  const overdueTasks = openTasks.filter((task) => task.due_date && task.due_date < new Date());
+  const overdueTasks = openTasks.filter(
+    (task) => task.due_date && task.due_date < new Date(),
+  );
   const trackedSeconds = timeEntries.reduce(
     (sum, entry) => sum + timeEntryDurationSeconds(entry),
     0,
@@ -134,8 +173,14 @@ async function GET_handler(
   const riskReasons = [
     ...(company.contacts.length === 0 ? ["No contacts registered"] : []),
     ...(company.projects.length === 0 ? ["No linked projects"] : []),
-    ...(company.contract_value == null ? ["No contract value"] : []),
-    ...(overdueTasks.length > 0 ? [`${overdueTasks.length} overdue open task${overdueTasks.length === 1 ? "" : "s"}`] : []),
+    ...(financialsVisible && company.contract_value == null
+      ? ["No contract value"]
+      : []),
+    ...(overdueTasks.length > 0
+      ? [
+          `${overdueTasks.length} overdue open task${overdueTasks.length === 1 ? "" : "s"}`,
+        ]
+      : []),
   ];
 
   const markdown = [
@@ -146,8 +191,12 @@ async function GET_handler(
     `- Status: ${company.status}`,
     `- Plan: ${company.plan_name ?? "Not set"}`,
     `- Service type: ${company.service_type ?? "Not set"}`,
-    `- Contract value: ${company.contract_value ?? "Not set"}`,
-    `- Commission: ${company.commission ?? "Not set"}`,
+    ...(financialsVisible
+      ? [
+          `- Contract value: ${company.contract_value ?? "Not set"}`,
+          `- Commission: ${company.commission ?? "Not set"}`,
+        ]
+      : []),
     `- Tracked time: ${formatMinutes(trackedSeconds)}`,
     `- Open tasks: ${openTasks.length}`,
     `- Completed tasks: ${completedTasks.length}`,
@@ -155,16 +204,22 @@ async function GET_handler(
     `- Next deadline: ${nextDeadline ? nextDeadline.toISOString() : "Not set"}`,
     "",
     `## Risk`,
-    riskReasons.length > 0 ? riskReasons.map((reason) => `- ${reason}`).join("\n") : "- No current risk signals from available records.",
+    riskReasons.length > 0
+      ? riskReasons.map((reason) => `- ${reason}`).join("\n")
+      : "- No current risk signals from available records.",
     "",
     `## Recent activity`,
     activity.length > 0
-      ? activity.slice(0, 10).map((event) => `- ${event.type} by ${event.actor?.name ?? "System"}`).join("\n")
+      ? activity
+          .slice(0, 10)
+          .map((event) => `- ${event.type} by ${event.actor?.name ?? "System"}`)
+          .join("\n")
       : "- No activity in this report period.",
   ].join("\n");
 
   return NextResponse.json({
-    company,
+    company: redactClientFinancials(company, financialsVisible),
+    financials_visible: financialsVisible,
     period: { from: from.toISOString(), to: to.toISOString() },
     summary: {
       open_tasks: openTasks.length,
@@ -185,4 +240,7 @@ async function GET_handler(
   });
 }
 
-export const GET = withErrorReporting("api:companies/id/report:GET", GET_handler);
+export const GET = withErrorReporting(
+  "api:companies/id/report:GET",
+  GET_handler,
+);

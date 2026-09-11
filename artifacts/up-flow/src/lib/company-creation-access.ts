@@ -16,6 +16,7 @@ export interface CompanyCreationMembership {
 
 export interface CompanyCreationAccess {
   canCreateStandalone: boolean;
+  canCreateCompleteClient: boolean;
   canStartOnboarding: boolean;
   forceCreatorAsOwner: boolean;
 }
@@ -40,11 +41,19 @@ export function isCommercialOrSalesDepartmentName(name: string | null | undefine
   return /^(?:commercial|comercial|sales|vendas)(?:\b|\s|[-\u2013\u2014/&])/.test(normalized);
 }
 
+/** Matches the Finance labels used by the contract workflow. */
+export function isFinanceDepartmentName(name: string | null | undefined) {
+  const normalized = normalizedDepartmentName(name);
+  return normalized === "finance" || normalized === "financeiro";
+}
+
 /**
  * Resolve permissions for client creation and onboarding.
  *
  * Creative & Design members can create a standalone client. Commercial and
- * Sales members can start onboarding. Workspace admins can do both.
+ * Sales members can start onboarding, while Commercial, Sales, and Finance
+ * can recreate a complete signed-client record. Workspace admins can use all
+ * three flows, subject to the separate financial-visibility rule.
  */
 export function resolveCompanyCreationAccess(input: {
   isWorkspaceAdmin: boolean;
@@ -62,9 +71,14 @@ export function resolveCompanyCreationAccess(input: {
   const isCommercialMember = Boolean(
     isEligibleMember && isCommercialOrSalesDepartmentName(input.membership?.departmentName),
   );
+  const isFinanceMember = Boolean(
+    isEligibleMember && isFinanceDepartmentName(input.membership?.departmentName),
+  );
 
   return {
     canCreateStandalone: input.isWorkspaceAdmin || isCreativeMember,
+    canCreateCompleteClient:
+      input.isWorkspaceAdmin || isCommercialMember || isFinanceMember,
     canStartOnboarding: input.isWorkspaceAdmin || isCommercialMember,
     // Only Creative's restricted standalone path needs this guard. Admins
     // keep their existing ability to assign an active workspace owner.

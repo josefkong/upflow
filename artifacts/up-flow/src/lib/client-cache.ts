@@ -1,5 +1,7 @@
 "use client";
 
+import { ApiResponseError } from "@/lib/client-auth-recovery";
+
 type CacheEntry<T> = {
   data: T;
   loadedAt: number;
@@ -7,6 +9,10 @@ type CacheEntry<T> = {
 
 const cache = new Map<string, CacheEntry<unknown>>();
 const inflight = new Map<string, Promise<unknown>>();
+
+export function peekCachedJson<T>(key: string): T | null {
+  return (cache.get(key) as CacheEntry<T> | undefined)?.data ?? null;
+}
 
 export function getCachedJson<T>(
   key: string,
@@ -27,7 +33,7 @@ export function getCachedJson<T>(
   const request = fetch(url)
     .then(async (response) => {
       if (!response.ok) {
-        throw new Error(`Request failed: ${response.status}`);
+        throw new ApiResponseError(`Request failed: ${response.status}`, response.status);
       }
       return (await response.json()) as T;
     })

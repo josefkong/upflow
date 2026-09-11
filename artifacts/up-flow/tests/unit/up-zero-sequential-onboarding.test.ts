@@ -34,7 +34,7 @@ test("UP Zero onboarding is an idempotent Commercial to Technical Support to Mar
   assert.match(repairMigration, /DISTINCT ON \(item\."onboarding_id"\)/);
   assert.match(repairMigration, /up_zero_website_configuration/);
 
-  assert.match(onboarding, /UP_ZERO_CONFIGURATION_AUTOMATION_KEY = "up_zero_website_configuration"/);
+  assert.match(onboarding, /UP_ZERO_CONFIGURATION_AUTOMATION_KEY\s*=\s*"up_zero_website_configuration"/);
   assert.match(onboarding, /UP_ZERO_CONFIGURATION_TASK_TITLE = "Configure UP Zero website"/);
   assert.match(onboarding, /isUpZeroConfigurationChecklistItem/);
   assert.match(onboarding, /if \(!hasUpZeroService\(onboarding\.contracted_services\)\)/);

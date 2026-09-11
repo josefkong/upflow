@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import type { ReactNode } from "react";
 import {
   Bell,
   Check,
@@ -42,6 +43,13 @@ export interface TaskAssigneePickerProps {
   contentClassName?: string;
   /** Trap focus inside the picker when it is opened from another modal. */
   modal?: boolean;
+  /** Sends an immediate project-level notification when provided. */
+  onNotify?: () => void | Promise<void>;
+  notifying?: boolean;
+  /** Compact controls rendered beside the clear-assignee button. */
+  trailingActions?: ReactNode;
+  /** Keeps the primary assignee assigned while allowing it to be changed. */
+  showClear?: boolean;
   /** @deprecated Use triggerClassName. Kept for existing task forms. */
   selectClassName?: string;
 }
@@ -70,6 +78,10 @@ export default function TaskAssigneePicker({
   triggerClassName,
   contentClassName,
   modal = false,
+  onNotify,
+  notifying = false,
+  trailingActions,
+  showClear = true,
   selectClassName,
 }: TaskAssigneePickerProps) {
   const { t } = useLanguage();
@@ -84,15 +96,17 @@ export default function TaskAssigneePicker({
   const selected = users.find((user) => user.id === value) ?? null;
   const interactionDisabled = disabled || loading;
 
-  const notifyText = loading
-    ? t("taskAssigneePicker.loading")
-    : selected
-      ? mode === "create"
-        ? t("task.assigneeNotifyOnCreate", { name: selected.name })
-        : t("task.assigneeNotifyOnAssignment", { name: selected.name })
-      : value
-        ? t("taskAssigneePicker.selectedUnavailable")
-        : t("task.noAssigneeNotification");
+  const notifyText = onNotify
+    ? t("taskAssigneePicker.notifyProjectHint")
+    : loading
+      ? t("taskAssigneePicker.loading")
+      : selected
+        ? mode === "create"
+          ? t("task.assigneeNotifyOnCreate", { name: selected.name })
+          : t("task.assigneeNotifyOnAssignment", { name: selected.name })
+        : value
+          ? t("taskAssigneePicker.selectedUnavailable")
+          : t("task.noAssigneeNotification");
 
   const closePicker = () => {
     setOpen(false);
@@ -110,7 +124,23 @@ export default function TaskAssigneePicker({
         <label htmlFor={triggerId} className="text-sm font-medium text-foreground">
           {resolvedLabel}
         </label>
-        {selected ? (
+        {onNotify ? (
+          <button
+            type="button"
+            onClick={() => void onNotify()}
+            disabled={interactionDisabled || notifying}
+            aria-label={t("taskAssigneePicker.notifyProjectAria")}
+            title={t("taskAssigneePicker.notifyProjectAria")}
+            className="inline-flex min-h-7 items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition hover:border-primary/35 hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {notifying ? (
+              <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" />
+            ) : (
+              <Bell aria-hidden="true" className="h-3 w-3" />
+            )}
+            {notifying ? t("taskAssigneePicker.notifying") : t("task.notify")}
+          </button>
+        ) : selected ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
             <Bell aria-hidden="true" className="h-3 w-3" />
             {t("task.notify")}
@@ -258,17 +288,19 @@ export default function TaskAssigneePicker({
           </PopoverContent>
         </Popover>
 
-        {value ? (
+        {value && showClear ? (
           <button
             type="button"
             onClick={() => onChange("")}
             disabled={interactionDisabled}
             aria-label={t("taskAssigneePicker.clear")}
-            className="flex w-11 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
           >
             <X aria-hidden="true" className="h-4 w-4" />
           </button>
         ) : null}
+
+        {trailingActions}
       </div>
 
       <p id={hintId} className="flex items-start gap-1.5 text-xs text-muted-foreground" aria-live="polite">

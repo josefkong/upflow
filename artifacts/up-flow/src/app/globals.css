@@ -100,6 +100,15 @@
     background-color: hsl(var(--card)) !important;
     color: hsl(var(--foreground)) !important;
   }
+  select:not([multiple]):not([size]):not(.appearance-none) {
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: url("/assets/lucide-chevron-down.svg");
+    background-position: right 0.875rem center;
+    background-repeat: no-repeat;
+    background-size: 1rem 1rem;
+    padding-inline-end: 2.75rem !important;
+  }
   html.dark select {
     color-scheme: dark;
   }
@@ -121,6 +130,10 @@
 }
 
 @layer components {
+  .upflow-select-chevron {
+    inset-inline-end: 0.875rem !important;
+  }
+
   .glass {
     background:
       linear-gradient(145deg, rgba(17, 25, 44, 0.92), rgba(4, 8, 20, 0.78));
