@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
-import { Menu } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { toast } from "sonner";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { logError } from "@/lib/log-error";
@@ -50,16 +50,15 @@ export default function Sidebar({
   const [signingOut, setSigningOut] = useState(false);
   const [inboxPendingCount, setInboxPendingCount] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(
-    initialDesktopSidebarOpen,
-  );
+  const [desktopSidebarOpen, setDesktopSidebarOpen] =
+    useState(initialDesktopSidebarOpen);
   const [isDesktopViewport, setIsDesktopViewport] = useState(false);
   const desktopSidebarRef = useRef<HTMLElement>(null);
   const desktopToggleRef = useRef<HTMLButtonElement>(null);
-  const desktopPanelCloseRef = useRef<HTMLButtonElement>(null);
   const mobileToggleRef = useRef<HTMLButtonElement>(null);
   const mobileDialogRef = useRef<HTMLElement>(null);
   const mobileCloseRef = useRef<HTMLButtonElement>(null);
+  const mobileBackwardWrapTargetRef = useRef<HTMLElement>(null);
   const lastNavigationFocusRef = useRef<"mobile" | "desktop" | null>(null);
   const closeMobileNavigation = useCallback((restoreFocus = true) => {
     setMobileOpen(false);
@@ -76,14 +75,8 @@ export default function Sidebar({
     window.requestAnimationFrame(() => desktopToggleRef.current?.focus());
   }, []);
   const toggleDesktopSidebar = useCallback(() => {
-    setDesktopSidebarOpen((open) => {
-      const nextOpen = !open;
-      window.requestAnimationFrame(() => {
-        if (nextOpen) desktopPanelCloseRef.current?.focus();
-        else desktopToggleRef.current?.focus();
-      });
-      return nextOpen;
-    });
+    setDesktopSidebarOpen((current) => !current);
+    window.requestAnimationFrame(() => desktopToggleRef.current?.focus());
   }, []);
 
   useEffect(() => {
@@ -112,10 +105,7 @@ export default function Sidebar({
       ) {
         return "mobile" as const;
       }
-      if (
-        target === desktopToggleRef.current ||
-        desktopSidebarRef.current?.contains(target)
-      ) {
+      if (desktopSidebarRef.current?.contains(target)) {
         return "desktop" as const;
       }
       return null;
@@ -145,21 +135,22 @@ export default function Sidebar({
   useEffect(() => {
     if (!mounted) return;
     try {
-      localStorage.setItem(DESKTOP_SIDEBAR_KEY, desktopSidebarOpen ? "1" : "0");
+      localStorage.setItem(
+        DESKTOP_SIDEBAR_KEY,
+        desktopSidebarOpen ? "1" : "0",
+      );
     } catch {
       // localStorage may be unavailable; the cookie remains the source of truth.
     }
     document.cookie =
-      DESKTOP_SIDEBAR_KEY +
-      "=" +
-      (desktopSidebarOpen ? "1" : "0") +
+      DESKTOP_SIDEBAR_KEY + "=" + (desktopSidebarOpen ? "1" : "0") +
       "; Path=/; Max-Age=31536000; SameSite=Lax";
   }, [desktopSidebarOpen, mounted]);
 
   useEffect(() => {
     document.documentElement.style.setProperty(
       "--upflow-desktop-sidebar-width",
-      desktopSidebarOpen ? "272px" : "64px",
+      desktopSidebarOpen ? "336px" : "64px",
     );
   }, [desktopSidebarOpen]);
 
@@ -192,8 +183,7 @@ export default function Sidebar({
       if (mobileOpen || mobileNavigationFocused) {
         window.requestAnimationFrame(() => {
           lastNavigationFocusRef.current = null;
-          if (desktopSidebarOpen) desktopPanelCloseRef.current?.focus();
-          else desktopToggleRef.current?.focus();
+          desktopToggleRef.current?.focus();
         });
       }
       return;
@@ -201,7 +191,6 @@ export default function Sidebar({
 
     const desktopNavigationFocused =
       desktopSidebarRef.current?.contains(document.activeElement) ||
-      document.activeElement === desktopToggleRef.current ||
       lastNavigationFocusRef.current === "desktop";
     if (desktopNavigationFocused) {
       lastNavigationFocusRef.current = null;
@@ -232,14 +221,23 @@ export default function Sidebar({
       if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
+        mobileBackwardWrapTargetRef.current = last;
+      } else if (
+        !event.shiftKey &&
+        (document.activeElement === last ||
+          document.activeElement === mobileBackwardWrapTargetRef.current)
+      ) {
         event.preventDefault();
         first.focus();
+        mobileBackwardWrapTargetRef.current = null;
+      } else {
+        mobileBackwardWrapTargetRef.current = null;
       }
     }
 
     document.addEventListener("keydown", handleKey);
     return () => {
+      mobileBackwardWrapTargetRef.current = null;
       document.removeEventListener("keydown", handleKey);
     };
   }, [closeMobileNavigation, mobileOpen]);
@@ -249,10 +247,7 @@ export default function Sidebar({
     setSigningOut(true);
     try {
       const supabase = createSupabaseBrowserClient();
-      await fetch("/api/auth/logout", {
-        method: "POST",
-        credentials: "include",
-      });
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
       await supabase.auth.signOut();
       toast.success(t("auth.signedOut"));
       window.location.assign("/login");
@@ -265,7 +260,7 @@ export default function Sidebar({
 
   const renderRail = (
     onNavigate?: () => void,
-    options: { panelId?: string } = {},
+    options: { panelId?: string; showPanelToggle?: boolean } = {},
   ) => (
     <Rail
       user={user}
@@ -274,6 +269,7 @@ export default function Sidebar({
       panelOpen={desktopSidebarOpen}
       inboxPendingCount={inboxPendingCount}
       panelId={options.panelId}
+      showPanelToggle={options.showPanelToggle}
       toggleRef={options.panelId ? desktopToggleRef : undefined}
       onTogglePanel={toggleDesktopSidebar}
       onSignOut={handleSignOut}
@@ -286,7 +282,7 @@ export default function Sidebar({
       <aside
         className={cn(
           "hidden flex-shrink-0 md:flex",
-          initialDesktopSidebarOpen ? "w-[272px]" : "w-[64px]",
+          initialDesktopSidebarOpen ? "w-[336px]" : "w-[64px]",
         )}
         aria-hidden="true"
       >
@@ -303,28 +299,20 @@ export default function Sidebar({
         data-testid="desktop-sidebar"
         className={cn(
           "hidden h-dvh min-h-0 flex-shrink-0 overflow-hidden transition-[width] duration-200 ease-out motion-reduce:transition-none md:flex",
-          desktopSidebarOpen ? "w-[272px]" : "w-[64px]",
+          desktopSidebarOpen ? "w-[336px]" : "w-[64px]",
         )}
-        aria-label={t("sidebar.navigation")}
       >
         <div
-          className={cn(
-            "grid min-h-0 shrink-0 overflow-hidden transition-[width,opacity] duration-200 ease-out motion-reduce:transition-none",
-            desktopSidebarOpen
-              ? "pointer-events-none w-0 opacity-0"
-              : "w-[64px] opacity-100",
-          )}
-          aria-hidden={desktopSidebarOpen}
-          inert={desktopSidebarOpen ? true : undefined}
+          data-testid="desktop-sidebar-rail"
+          className="flex min-h-0 w-[64px] min-w-[64px] shrink-0"
         >
-          <div className="flex min-h-0 w-[64px]">
-            {renderRail(undefined, { panelId: "desktop-sidebar-panel" })}
-          </div>
+          {renderRail(undefined, { panelId: "desktop-sidebar-panel" })}
         </div>
         <div
           id="desktop-sidebar-panel"
+          data-testid="desktop-sidebar-panel"
           className={cn(
-            "grid min-h-0 overflow-hidden transition-[width,opacity] duration-200 ease-out motion-reduce:transition-none",
+            "grid min-h-0 shrink-0 overflow-hidden transition-[width,opacity] duration-200 ease-out motion-reduce:transition-none",
             desktopSidebarOpen
               ? "w-[272px] opacity-100"
               : "pointer-events-none w-0 opacity-0",
@@ -344,7 +332,6 @@ export default function Sidebar({
               isSuperAdmin={user.isSuperAdmin === true}
               active={desktopSidebarOpen && isDesktopViewport}
               onRequestClose={closeDesktopSidebar}
-              closeButtonRef={desktopPanelCloseRef}
               onSignOut={handleSignOut}
               signingOut={signingOut}
               inboxPendingCount={inboxPendingCount}
@@ -352,6 +339,7 @@ export default function Sidebar({
           </div>
         </div>
       </aside>
+
 
       {!mobileOpen && (
         <div className="fixed left-3 top-3 z-[60] md:hidden">
@@ -380,11 +368,23 @@ export default function Sidebar({
             role="dialog"
             aria-modal="true"
             aria-label={t("sidebar.navigation")}
-            className="fixed left-0 top-0 z-50 flex h-dvh min-h-0 w-[min(100vw,272px)] overflow-hidden border-r border-sidebar-border shadow-2xl md:hidden"
+            className="fixed left-0 top-0 z-50 flex h-dvh min-h-0 w-[min(100vw,336px)] overflow-hidden border-r border-sidebar-border shadow-2xl md:hidden"
           >
-            {/* Responsive invariant: the mobile drawer and expanded desktop
-                sidebar render the same Panel; only their outer shell differs. */}
-            <div className="flex min-h-0 w-full">
+            <button
+              ref={mobileCloseRef}
+              type="button"
+              onClick={() => closeMobileNavigation()}
+              aria-label={t("sidebar.closeNavigation")}
+              className="absolute left-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-foreground shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="flex min-h-0 w-[64px]">
+              {renderRail(closeMobileNavigationAfterNavigate, {
+                showPanelToggle: false,
+              })}
+            </div>
+            <div className="min-h-0 min-w-0 flex-1">
               <Panel
                 pathname={pathname}
                 workspaces={workspaces}
@@ -396,9 +396,6 @@ export default function Sidebar({
                 isSuperAdmin={user.isSuperAdmin === true}
                 active
                 onNavigate={closeMobileNavigationAfterNavigate}
-                onRequestClose={() => closeMobileNavigation()}
-                closeButtonRef={mobileCloseRef}
-                closeButtonLabel={t("sidebar.closeNavigation")}
                 onSignOut={handleSignOut}
                 signingOut={signingOut}
                 inboxPendingCount={inboxPendingCount}

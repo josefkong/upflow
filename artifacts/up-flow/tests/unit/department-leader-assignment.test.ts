@@ -51,3 +51,17 @@ test("Teams cards render the stored leader and expose an admin editor", () => {
   assert.match(overview, /leader_id: true/);
   assert.match(overview, /avatar_url: true/);
 });
+
+test("Teams use one card view with independently expandable member panels", () => {
+  const component = read("src/components/team/team-workspace.tsx");
+
+  assert.doesNotMatch(component, /type ActiveView/);
+  assert.doesNotMatch(component, /function DepartmentDetails/);
+  assert.doesNotMatch(component, /function MemberRoster/);
+  assert.ok(component.includes("const [expandedTeamKeys, setExpandedTeamKeys]"));
+  assert.ok(component.includes("const toggleExpandedTeam = (teamKey: string)"));
+  assert.ok(component.includes("membersExpanded={expandedTeamKeys.has(card.key)}"));
+  assert.ok(component.includes("onToggleMembers={() => toggleExpandedTeam(card.key)}"));
+  assert.ok(component.includes('data-testid="team-members-panel"'));
+  assert.ok(component.includes("aria-expanded={membersExpanded}"));
+});

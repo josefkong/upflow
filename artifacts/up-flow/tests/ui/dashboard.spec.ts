@@ -237,7 +237,7 @@ test.describe("Dashboard quick actions and task rows", () => {
     await expect(dlg).toBeHidden({ timeout: 10_000 });
 
     await page.goto(`/projects?tab=internal&q=${encodeURIComponent(name)}`);
-    await expect(page.getByRole("link", { name, exact: true })).toBeVisible({
+    await expect(page.locator("main").getByRole("link", { name, exact: true })).toBeVisible({
       timeout: 10_000,
     });
 

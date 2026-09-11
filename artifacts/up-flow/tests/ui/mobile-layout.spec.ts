@@ -86,7 +86,6 @@ test.describe("Mobile responsive layout", () => {
     await page.goto("/");
 
     await expect(page.getByTestId("desktop-sidebar")).toBeHidden();
-    await expect(page.getByTestId("desktop-sidebar-restore")).toBeHidden();
     await expect(
       page.getByRole("button", { name: "Open navigation" }),
     ).toBeVisible();
@@ -148,7 +147,6 @@ test.describe("Mobile responsive layout", () => {
     const desktopSidebar = page.getByTestId("desktop-sidebar");
     await expect(navigationDialog).toHaveCount(0);
     await expect(desktopSidebar).toBeVisible();
-    await expect(page.getByTestId("desktop-sidebar-restore")).toBeHidden();
     await expect(
       desktopSidebar.getByRole("button", { name: "Hide sidebar" }),
     ).toBeFocused();
@@ -172,7 +170,6 @@ test.describe("Mobile responsive layout", () => {
 
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(desktopSidebar).toBeHidden();
-    await expect(page.getByTestId("desktop-sidebar-restore")).toBeHidden();
     const navigationToggle = page.getByRole("button", {
       name: "Open navigation",
     });

@@ -16,6 +16,7 @@ import {
   ClipboardCheck,
   HelpCircle,
   LogOut,
+  PanelLeftClose,
   PanelLeftOpen,
   Settings2,
   type LucideIcon,
@@ -39,12 +40,25 @@ export const primaryNav: NavItem[] = [
     labelKey: "nav.dashboard",
     icon: LayoutGrid,
   },
+  { href: "/team", label: "Team", labelKey: "nav.team", icon: Users },
+  {
+    href: "/time",
+    label: "Time tracking",
+    labelKey: "nav.timeTracking",
+    icon: Clock,
+  },
   { href: "/inbox", label: "Inbox", labelKey: "nav.inbox", icon: Inbox },
   {
     href: "/calendar",
     label: "Calendar",
     labelKey: "nav.calendar",
     icon: Calendar,
+  },
+  {
+    href: "/sala-de-reuniao",
+    label: "Sala de Reuniao",
+    labelKey: "nav.meetingRoom",
+    icon: DoorOpen,
   },
   {
     href: "/projects",
@@ -63,19 +77,6 @@ export const primaryNav: NavItem[] = [
     label: "Onboarding",
     labelKey: "nav.onboarding",
     icon: ClipboardCheck,
-  },
-  { href: "/team", label: "Team", labelKey: "nav.team", icon: Users },
-  {
-    href: "/time",
-    label: "Time Tracking",
-    labelKey: "nav.timeTracking",
-    icon: Clock,
-  },
-  {
-    href: "/sala-de-reuniao",
-    label: "Meeting Room",
-    labelKey: "nav.meetingRoom",
-    icon: DoorOpen,
   },
   {
     href: "/activity",
@@ -136,171 +137,163 @@ export function Rail({
   onNavigate,
 }: RailProps) {
   const { t } = useLanguage();
+  const railLabelClass =
+    "block w-full whitespace-normal break-words text-center [overflow-wrap:anywhere]";
+  const panelToggleLabel = t(panelOpen ? "sidebar.hide" : "sidebar.show");
 
   return (
-    <div
-      data-testid="sidebar-rail"
-      className="upflow-sidebar-panel relative flex h-full w-full flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-sm dark:border-blue-300/10 dark:bg-[#050816] dark:shadow-[inset_-1px_0_0_rgba(96,165,250,0.06)]"
-    >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_8%,rgba(59,130,246,0.16),transparent_32%),radial-gradient(circle_at_95%_34%,rgba(139,92,246,0.12),transparent_28%)]" />
-      <div className="pointer-events-none absolute right-0 top-0 h-full w-px bg-gradient-to-b from-blue-400/30 via-violet-400/[0.35] to-transparent" />
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center pb-[10px] pt-[18px]">
+    <div className="glass-rail flex h-full w-full min-w-[64px] shrink-0 flex-col p-1">
+      <div className="flex min-h-0 flex-1 flex-col items-center rounded-[10px] bg-[#16132f] px-0 pb-1.5 pt-1.5 text-[#e9e7ff] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_12px_30px_rgba(0,0,0,0.28)]">
+        <div
+          data-testid="sidebar-rail-brand"
+          className="flex h-10 w-full shrink-0 items-center justify-center"
+        >
+          <Link
+            href="/"
+            onClick={onNavigate}
+            className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-lg bg-white p-1 shadow-[0_4px_16px_rgba(0,0,0,0.24)] transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+            aria-label="Up Flow"
+          >
+            <Image
+              src="/assets/UP_LOGO_1778594851568.png"
+              alt="Up Flow"
+              width={36}
+              height={36}
+              className="w-full h-full object-contain"
+              priority
+            />
+          </Link>
+        </div>
         {showPanelToggle && (
-          <div className="flex h-11 w-full shrink-0 items-center justify-center">
+          <div className="mt-1 flex h-8 w-full shrink-0 items-center justify-center">
             <button
               ref={toggleRef}
               type="button"
               data-testid="sidebar-panel-toggle"
               onClick={onTogglePanel}
-              title={panelOpen ? t("sidebar.hide") : t("sidebar.show")}
-              aria-label={panelOpen ? t("sidebar.hide") : t("sidebar.show")}
+              title={panelToggleLabel}
+              aria-label={panelToggleLabel}
               aria-controls={panelId}
               aria-expanded={panelOpen}
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-background/70 text-muted-foreground shadow-sm outline-none transition-all hover:border-sky-400/40 hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/60 dark:border-white/10 dark:bg-white/[0.15] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] dark:hover:bg-sky-400/10"
+              className={cn(
+                "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border text-[#e9e7ff] shadow-[0_4px_16px_rgba(0,0,0,0.2)] outline-none transition-all focus-visible:ring-2 focus-visible:ring-white/80",
+                panelOpen
+                  ? "border-white/45 bg-white text-[#171331]"
+                  : "border-white/20 bg-white/[0.1] hover:border-white/45 hover:bg-white/[0.18] hover:text-white",
+              )}
             >
-              <PanelLeftOpen className="h-5 w-5" />
-              <span className="sr-only">
-                {panelOpen ? t("sidebar.hide") : t("sidebar.show")}
-              </span>
+              {panelOpen ? (
+                <PanelLeftClose className="h-4 w-4 stroke-[2]" />
+              ) : (
+                <PanelLeftOpen className="h-4 w-4 stroke-[2]" />
+              )}
+              <span className="sr-only">{panelToggleLabel}</span>
             </button>
           </div>
         )}
-        <div
-          data-testid="sidebar-rail-brand"
-          className="flex h-11 w-full shrink-0 items-center justify-center"
-        >
-          <Link
-            href="/"
-            onClick={onNavigate}
-            className="flex h-11 w-11 items-center justify-center rounded-xl outline-none transition-colors hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-primary/60"
-            aria-label="Up Flow"
-          >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white p-1 shadow-[0_4px_16px_rgba(0,0,0,0.24)]">
-              <Image
-                src="/assets/UP_LOGO_1778594851568.png"
-                alt="Up Flow"
-                width={36}
-                height={36}
-                className="h-full w-full object-contain"
-                priority
-              />
-            </span>
-          </Link>
-        </div>
 
         <nav
           data-testid="sidebar-rail-navigation"
-          className="flex min-h-0 w-full flex-1 flex-col items-center gap-1.5 overflow-y-auto overscroll-contain px-1 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="mt-1 flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto overscroll-contain px-0 py-1"
         >
-          {primaryNav.map((item) => {
-            const { label, labelKey, icon: Icon } = item;
-            const href = resolvePrimaryNavHref(item, clientsHref);
-            const active = isPrimaryNavItemActive(pathname, item, clientsHref);
-            const translatedLabel = t(labelKey) || label;
-            const isInbox = href === "/inbox";
-            const pendingLabel = t("sidebar.inboxPendingCount", {
-              count: inboxPendingCount,
-            });
-            const accessibleLabel =
-              isInbox && inboxPendingCount > 0
-                ? `${translatedLabel}, ${pendingLabel}`
-                : translatedLabel;
-            return (
-              <Link
-                key={href}
-                href={href}
-                onClick={onNavigate}
-                title={accessibleLabel}
-                aria-label={accessibleLabel}
-                aria-current={active ? "page" : undefined}
+        {primaryNav.map((item) => {
+          const { label, labelKey, icon: Icon } = item;
+          const href = resolvePrimaryNavHref(item, clientsHref);
+          const active = isPrimaryNavItemActive(pathname, item, clientsHref);
+          const translatedLabel = t(labelKey) || label;
+          const isInbox = item.href === "/inbox";
+          const pendingLabel = t("sidebar.inboxPendingCount", {
+            count: inboxPendingCount,
+          });
+          const accessibleLabel =
+            isInbox && inboxPendingCount > 0
+              ? `${translatedLabel}, ${pendingLabel}`
+              : translatedLabel;
+          return (
+            <Link
+              key={href}
+              href={href}
+              onClick={onNavigate}
+              title={accessibleLabel}
+              aria-label={accessibleLabel}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "group relative flex min-h-[48px] w-full flex-col items-center justify-center gap-1 rounded-lg px-0 py-1 text-center text-[8px] font-semibold leading-[9px] tracking-tight outline-none transition-all focus-visible:ring-2 focus-visible:ring-white/80",
+                active
+                  ? "bg-white text-[#171331] shadow-[0_6px_20px_rgba(0,0,0,0.22)]"
+                  : "text-[#d9d5fb] hover:bg-white/[0.12] hover:text-white",
+              )}
+            >
+              <Icon
                 className={cn(
-                  "group relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl outline-none transition-all focus-visible:ring-2 focus-visible:ring-primary/60",
-                  active
-                    ? "bg-gradient-to-r from-blue-600/55 to-violet-600/32 text-white shadow-[0_0_30px_rgba(37,99,235,0.28),inset_0_1px_0_rgba(255,255,255,0.14)] ring-1 ring-blue-300/20"
-                    : "text-muted-foreground hover:bg-white/[0.06] hover:text-foreground hover:shadow-[0_0_22px_rgba(139,92,246,0.12)]",
+                  "h-[17px] w-[17px] shrink-0 stroke-[1.8]",
+                  active ? "text-[#21184a]" : "text-[#e6e3ff]",
                 )}
-              >
-                {active && (
-                  <>
-                    <span className="absolute inset-0 bg-[radial-gradient(circle_at_15%_50%,rgba(96,165,250,0.24),transparent_42%)]" />
-                    <span className="absolute left-0 h-6 w-0.5 rounded-full bg-sky-300 shadow-[0_0_14px_rgba(59,130,246,0.9)]" />
-                  </>
-                )}
-                <Icon
-                  className={cn(
-                    "relative h-3.5 w-3.5 shrink-0",
-                    active && "drop-shadow-[0_0_8px_rgba(147,197,253,0.8)]",
-                  )}
-                />
-                {isInbox && inboxPendingCount > 0 ? (
-                  <span
-                    data-testid="sidebar-rail-inbox-count"
-                    aria-hidden="true"
-                    className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold leading-none text-white shadow-[0_0_10px_rgba(244,63,94,0.45)]"
-                  >
-                    {formatInboxPendingBadge(inboxPendingCount)}
-                  </span>
-                ) : null}
-                <span data-testid="sidebar-rail-item-label" className="sr-only">
-                  {translatedLabel}
+              />
+              {isInbox && inboxPendingCount > 0 ? (
+                <span
+                  data-testid="sidebar-rail-inbox-count"
+                  aria-hidden="true"
+                  className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold leading-none text-white shadow-[0_0_10px_rgba(244,63,94,0.45)]"
+                >
+                  {formatInboxPendingBadge(inboxPendingCount)}
                 </span>
-              </Link>
-            );
-          })}
-        </nav>
+              ) : null}
+              <span
+                data-testid="sidebar-rail-item-label"
+                className={railLabelClass}
+              >
+                {translatedLabel}
+              </span>
+            </Link>
+          );
+        })}
+      </nav>
 
-        <div className="mt-1 flex w-full shrink-0 flex-col items-center gap-1.5 border-t border-blue-300/10 px-1 pt-1.5">
-          <Link
-            href="/settings"
-            onClick={onNavigate}
-            aria-label={t("sidebar.settings")}
-            title={t("sidebar.settings")}
-            className={cn(
-              "relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl text-muted-foreground outline-none transition-all hover:bg-white/[0.06] hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/60",
-              isActiveHref(pathname, "/settings") &&
-                "bg-gradient-to-r from-blue-600/55 to-violet-600/32 text-white shadow-[0_0_30px_rgba(37,99,235,0.28),inset_0_1px_0_rgba(255,255,255,0.14)] ring-1 ring-blue-300/20",
-            )}
-          >
-            {isActiveHref(pathname, "/settings") && (
-              <>
-                <span className="absolute inset-0 bg-[radial-gradient(circle_at_15%_50%,rgba(96,165,250,0.24),transparent_42%)]" />
-                <span className="absolute left-0 h-6 w-0.5 rounded-full bg-sky-300 shadow-[0_0_14px_rgba(59,130,246,0.9)]" />
-              </>
-            )}
-            <Settings2 className="relative h-3.5 w-3.5" />
-            <span className="sr-only">{t("sidebar.settings")}</span>
-          </Link>
-          <button
-            onClick={onSignOut}
-            aria-label={t("sidebar.signOut")}
-            title={t("sidebar.signOut")}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-muted-foreground outline-none transition-all hover:bg-rose-500/15 hover:text-rose-100 focus-visible:ring-2 focus-visible:ring-primary/60"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            <span className="sr-only">{t("sidebar.signOut")}</span>
-          </button>
-          <Link
-            href="/docs"
-            onClick={onNavigate}
-            aria-label={t("sidebar.help")}
-            title={t("sidebar.help")}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-muted-foreground outline-none transition-all hover:bg-white/[0.06] hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/60"
-          >
-            <HelpCircle className="h-3.5 w-3.5" />
-            <span className="sr-only">{t("sidebar.help")}</span>
-          </Link>
-          <Link
-            href="/settings"
-            onClick={onNavigate}
-            aria-label={user.name || user.email || "User"}
-            title={user.name || user.email || "User"}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl outline-none transition-colors hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-primary/60"
-          >
-            <span className="flex h-8 w-8 items-center justify-center rounded-[11px] bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-500 text-[9px] font-bold text-white shadow-[0_0_20px_rgba(59,130,246,0.34)] ring-1 ring-white/[0.15]">
-              {getInitials(user.name || user.email || "U")}
-            </span>
-          </Link>
-        </div>
+      <div className="mt-1 flex w-full shrink-0 flex-col items-center gap-1 border-t border-white/[0.1] pt-1.5">
+        <Link
+          href="/settings"
+          onClick={onNavigate}
+          aria-label={t("sidebar.settings")}
+          title={t("sidebar.settings")}
+          className={cn(
+            "flex min-h-[46px] w-full flex-col items-center justify-center gap-1 rounded-lg px-0 py-1 text-center text-[8px] font-semibold leading-[9px] tracking-tight text-[#d9d5fb] outline-none transition-all hover:bg-white/[0.12] hover:text-white focus-visible:ring-2 focus-visible:ring-white/80",
+            isActiveHref(pathname, "/settings") &&
+              "bg-white text-[#171331] shadow-[0_6px_20px_rgba(0,0,0,0.22)]",
+          )}
+        >
+          <Settings2 className="h-[17px] w-[17px] stroke-[1.8]" />
+          <span className={railLabelClass}>{t("sidebar.settings")}</span>
+        </Link>
+        <button
+          onClick={onSignOut}
+          aria-label={t("sidebar.signOut")}
+          title={t("sidebar.signOut")}
+          className="flex min-h-[46px] w-full flex-col items-center justify-center gap-1 rounded-lg px-0 py-1 text-center text-[8px] font-semibold leading-[9px] tracking-tight text-[#d9d5fb] outline-none transition-all hover:bg-rose-500/20 hover:text-white focus-visible:ring-2 focus-visible:ring-white/80"
+        >
+          <LogOut className="h-[17px] w-[17px] stroke-[1.8]" />
+          <span className={railLabelClass}>{t("sidebar.signOut")}</span>
+        </button>
+        <Link
+          href="/docs"
+          onClick={onNavigate}
+          aria-label={t("sidebar.help")}
+          title={t("sidebar.help")}
+          className="flex min-h-[46px] w-full flex-col items-center justify-center gap-1 rounded-lg px-0 py-1 text-center text-[8px] font-semibold leading-[9px] tracking-tight text-[#d9d5fb] outline-none transition-all hover:bg-white/[0.12] hover:text-white focus-visible:ring-2 focus-visible:ring-white/80"
+        >
+          <HelpCircle className="h-[17px] w-[17px] stroke-[1.8]" />
+          <span className={railLabelClass}>{t("sidebar.help")}</span>
+        </Link>
+        <Link
+          href="/settings"
+          onClick={onNavigate}
+          aria-label={user.name || user.email || "User"}
+          title={user.name || user.email || "User"}
+          className="mt-1 flex h-7 w-7 items-center justify-center rounded-full bg-white text-[9px] font-bold text-[#21184a] shadow-[0_3px_12px_rgba(0,0,0,0.22)] transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+        >
+          {getInitials(user.name || user.email || "U")}
+        </Link>
+      </div>
       </div>
     </div>
   );

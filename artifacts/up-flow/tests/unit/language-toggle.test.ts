@@ -34,7 +34,10 @@ test("sidebar and workspace chrome use translation keys for shared labels", () =
   const workspaceSwitcher = read("src/components/layout/workspace-switcher.tsx");
 
   assert.match(rail, /labelKey: "nav\.dashboard"/);
-  assert.match(rail, /t\("sidebar\.show"\)/);
+  assert.match(
+    rail,
+    /const panelToggleLabel = t\(panelOpen \? "sidebar\.hide" : "sidebar\.show"\)/,
+  );
   assert.match(panelNav, /t\("sidebar\.navigation"\)/);
   assert.match(panel, /t\("sidebar\.searchSpacesAndProjects"\)/);
   assert.match(workspaceSwitcher, /t\("workspace\.new"\)/);

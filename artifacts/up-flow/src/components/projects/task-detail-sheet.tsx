@@ -720,7 +720,7 @@ export default function TaskDetailSheet({
       aria-label={currentTask.title}
       data-testid="task-detail-workspace"
       data-task-detail-hub="true"
-      className="upflow-task-detail fixed inset-y-0 left-0 right-0 z-[75] flex h-dvh flex-col overflow-hidden bg-[#07101f] text-foreground transition-[left] duration-200 ease-out motion-reduce:transition-none md:left-[var(--upflow-desktop-sidebar-width,272px)] md:top-20 md:z-50 md:h-auto"
+      className="upflow-task-detail fixed inset-y-0 left-0 right-0 z-[75] flex h-dvh flex-col overflow-hidden bg-[#07101f] text-foreground transition-[left] duration-200 ease-out motion-reduce:transition-none md:left-[var(--upflow-desktop-sidebar-width,336px)] md:top-20 md:z-50 md:h-auto"
     >
       <header className="upflow-task-detail-header flex h-16 shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-[#0a1425]/95 px-3 backdrop-blur sm:px-6 lg:px-8">
         <div className="flex min-w-0 items-center gap-3">

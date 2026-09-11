@@ -13,7 +13,6 @@ import { clearCachedJson, getCachedJson } from "@/lib/client-cache";
 import type { Department, TeamMember } from "@/lib/types";
 import { useLanguage } from "@/components/language-provider";
 import {
-  COLLAPSE_STORAGE_KEY,
   type EmailStatus,
   type PendingInvite,
   type TeamOverview,
@@ -36,8 +35,6 @@ export default function TeamPage() {
   const [cancelingInvite, setCancelingInvite] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [showEmpty, setShowEmpty] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
 
@@ -110,28 +107,6 @@ export default function TeamPage() {
   }, []);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(COLLAPSE_STORAGE_KEY);
-      if (!raw) return;
-      const keys = JSON.parse(raw) as string[];
-      if (Array.isArray(keys)) setCollapsed(new Set(keys));
-    } catch {
-      // Use the expanded default when local storage cannot be read.
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        COLLAPSE_STORAGE_KEY,
-        JSON.stringify(Array.from(collapsed)),
-      );
-    } catch {
-      // Collapse preferences are optional.
-    }
-  }, [collapsed]);
-
-  useEffect(() => {
     void loadTeamOverview();
   }, [loadTeamOverview]);
 
@@ -143,15 +118,6 @@ export default function TeamPage() {
     }
     void Promise.all([loadPending(), loadEmailStatus()]);
   }, [isAdmin, workspaceId, loadEmailStatus, loadPending]);
-
-  function toggleCollapsed(key: string) {
-    setCollapsed((previous) => {
-      const next = new Set(previous);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
 
   async function updateMember(
     userId: string,
@@ -390,15 +356,11 @@ export default function TeamPage() {
         pending={pending}
         loading={loading}
         query={query}
-        showEmpty={showEmpty}
         isAdmin={isAdmin}
         language={language}
         t={t}
-        collapsed={collapsed}
         resending={resending}
         cancelingInvite={cancelingInvite}
-        onShowEmptyChange={setShowEmpty}
-        onToggleCollapsed={toggleCollapsed}
         onUpdateMember={(userId, patch) => {
           void updateMember(userId, patch);
         }}

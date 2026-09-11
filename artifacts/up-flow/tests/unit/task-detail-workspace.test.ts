@@ -20,12 +20,12 @@ test("task details use an accessible, focused panel inside the app shell", () =>
   assert.match(detail, /fixed inset-y-0 left-0 right-0 z-\[75\]/);
   assert.match(
     detail,
-    /md:left-\[var\(--upflow-desktop-sidebar-width,272px\)\]/,
+    /md:left-\[var\(--upflow-desktop-sidebar-width,336px\)\]/,
   );
   assert.match(detail, /md:top-20[^"]*md:h-auto/);
   assert.doesNotMatch(detail, /fixed inset-0 z-50/);
   assert.match(sidebar, /--upflow-desktop-sidebar-width/);
-  assert.match(sidebar, /desktopSidebarOpen \? "272px" : "64px"/);
+  assert.match(sidebar, /desktopSidebarOpen \? "336px" : "64px"/);
   assert.match(detail, /data-testid="task-detail-main"/);
   assert.match(detail, /max-w-\[1240px\]/);
   assert.doesNotMatch(detail, /data-testid="task-detail-activity"/);

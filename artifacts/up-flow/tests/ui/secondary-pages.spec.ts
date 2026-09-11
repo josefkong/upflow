@@ -216,7 +216,7 @@ test.describe("Inbox", () => {
 test.describe("Team", () => {
   requireChromiumOrSkip();
 
-  test("renders the seeded admin under a department group", async ({
+  test("expands and collapses a team card member panel from its chevron", async ({
     browser,
     baseURL,
   }) => {
@@ -233,11 +233,20 @@ test.describe("Team", () => {
       timeout: 60_000,
     });
     await overviewLoaded;
-    // The Team page now groups members into department <section>s.
-    const groups = page.getByTestId("department-group");
-    await expect(groups.first()).toBeVisible();
-    // The seeded admin should appear somewhere in the grouped list.
-    await expect(page.getByText("admin@upflow.io").first()).toBeVisible();
+
+    const teamCard = page.getByTestId("department-group").first();
+    const membersToggle = teamCard.getByRole("button", {
+      name: /^(View members|Ver pessoas)$/,
+    });
+
+    await expect(teamCard).toBeVisible();
+    await expect(membersToggle).toHaveAttribute("aria-expanded", "false");
+    await membersToggle.click();
+    await expect(membersToggle).toHaveAttribute("aria-expanded", "true");
+    await expect(teamCard.getByTestId("team-members-panel")).toBeVisible();
+
+    await membersToggle.click();
+    await expect(teamCard.getByTestId("team-members-panel")).toHaveCount(0);
 
     await ctx.close();
   });
