@@ -161,12 +161,12 @@ test("Marketing B2B form opens from the replacement task and persists edits", as
       brandSection.getByRole("button", { name: /^(Save|Salvar)$/ }),
     ).toBeVisible();
 
-    await brandSection.getByRole("button", { name: /^(Add address|Adicionar endere\u00e7o)$/ }).click();
+    await brandSection.getByRole("button", { name: /^(Add address|Adicionar endere\u00e7o)$/i }).click();
     await expect(brandSection.getByLabel(/^(Full address|Endere\u00e7o completo)$/)).toHaveCount(2);
     await brandSection.getByLabel(/^(Full address|Endere\u00e7o completo)$/).nth(0).fill("Rua da Loja, 100");
     await brandSection.getByLabel(/^(Full address|Endere\u00e7o completo)$/).nth(1).fill("Rua da Fábrica, 200");
 
-    await brandSection.getByRole("button", { name: /^(Add competitor|Adicionar concorrente)$/ }).click();
+    await brandSection.getByRole("button", { name: /^(Add competitor|Adicionar concorrente)$/i }).click();
     await brandSection.getByPlaceholder(/^(For example: Namine|Ex\.: Namine)$/).fill(competitorName);
     await brandSection.getByPlaceholder(/^(?:@competitor or URL|@concorrente ou URL)$/).fill("@concorrente");
     await brandSection.getByPlaceholder("https://...").fill("https://concorrente.example");
@@ -355,6 +355,12 @@ test("Creating a client with Vesti and UP Zero creates the complete service work
 
     const supportGroupName = uniq("Support group");
     await loginAs(page.context(), SEEDED.member.email);
+    // Execution tasks stay out of the shared Kanban, but their direct links
+    // must still open the form without duplicating cards on the board.
+    const boardResponse = await memberApi.get(`/api/tasks?project_id=${supportItem?.task?.project_id}`);
+    expect(boardResponse.ok()).toBeTruthy();
+    const board = (await boardResponse.json()) as { items: Array<{ id: string }> };
+    expect(board.items.some((task) => task.id === supportItem?.task?.id)).toBe(false);
     await page.goto(
       `/projects/${supportItem?.task?.project_id}?view=form&task=${supportItem?.task?.id}`,
     );

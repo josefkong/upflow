@@ -5,6 +5,7 @@ import { getCachedJson } from "@/lib/client-cache";
 export const projectPageCacheKeys = {
   project: (projectId: string) => `project-page:${projectId}:project`,
   tasks: (projectId: string) => `project-page:${projectId}:tasks`,
+  task: (taskId: string) => `project-page:task:${taskId}`,
   fields: (projectId: string) => `project-page:${projectId}:fields`,
   workflows: (projectId: string) => `project-page:${projectId}:workflows`,
   users: (workspaceId: string) => `project-page:${workspaceId}:users`,

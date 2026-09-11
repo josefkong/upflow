@@ -173,6 +173,14 @@ export default function ProjectPage() {
       peekCachedJson<{ items: Task[] }>(projectPageCacheKeys.tasks(id))
         ?.items ?? [],
   );
+  const [focusedTaskDetail, setFocusedTaskDetail] = useState<Task | null>(null);
+  // Mirror boards intentionally omit execution tasks. Resolve a direct link
+  // separately so its form can open without adding duplicate Kanban cards.
+  const focusedTask = tasks.find((task) => task.id === focusedTaskId) ?? (
+    focusedTaskDetail?.id === focusedTaskId && focusedTaskDetail.project_id === id
+      ? focusedTaskDetail
+      : null
+  );
   const [users, setUsers] = useState<TaskAssignee[]>(() => {
     const workspaceId = peekCachedJson<Project>(
       projectPageCacheKeys.project(id),
@@ -239,7 +247,7 @@ export default function ProjectPage() {
           { ttlMs: 30_000, force },
         ).catch(() => ({ items: [] as WorkflowStatus[] })),
       ]);
-      const [[f, m, w], p, t] = await Promise.all([
+      const [[f, m, w], p, t, detail] = await Promise.all([
         supportingRequests,
         getCachedJson<Project>(
           projectPageCacheKeys.project(id),
@@ -251,9 +259,17 @@ export default function ProjectPage() {
           `/api/tasks?project_id=${id}`,
           { ttlMs: 5_000, force },
         ),
+        focusedTaskId
+          ? getCachedJson<Task>(
+              projectPageCacheKeys.task(focusedTaskId),
+              `/api/tasks/${encodeURIComponent(focusedTaskId)}`,
+              { ttlMs: 5_000, force },
+            ).catch(() => null)
+          : Promise.resolve(null),
       ]);
       setProject(p);
       setTasks(t.items ?? []);
+      setFocusedTaskDetail(detail);
       setCustomFields(f);
       setWorkflowStatuses(w.items ?? []);
       setMe(m);
@@ -306,11 +322,11 @@ export default function ProjectPage() {
     );
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, focusedTaskId]);
 
   useEffect(() => {
     if (!focusedTaskId || loading) return;
-    const task = tasks.find((item) => item.id === focusedTaskId);
+    const task = focusedTask;
     if (!task) return;
     const action = getOnboardingTaskAction(task, id);
     if (action?.kind === "form" && canCreateTasks) {
@@ -326,7 +342,7 @@ export default function ProjectPage() {
       return;
     }
     setSelectedTask(task);
-  }, [canCreateTasks, focusedTaskId, id, loading, router, tasks, viewParam]);
+  }, [canCreateTasks, focusedTask, focusedTaskId, id, loading, router, viewParam]);
 
   useEffect(() => {
     const liveTaskIds = new Set(tasks.map((task) => task.id));
@@ -344,12 +360,11 @@ export default function ProjectPage() {
         kind !== "finance" || isFinanceOnboardingSpace(project?.space?.name)
       );
     };
-    const focused = focusedTaskId
-      ? tasks.find((task) => task.id === focusedTaskId)
-      : null;
-    if (focused && formTaskForProject(focused)) return focused;
+    if (focusedTaskId) {
+      return focusedTask && formTaskForProject(focusedTask) ? focusedTask : null;
+    }
     return tasks.find(formTaskForProject) ?? null;
-  }, [focusedTaskId, project?.space?.name, tasks]);
+  }, [focusedTask, focusedTaskId, project?.space?.name, tasks]);
   const currentWorkflowKind = workflowFormTask
     ? workflowFormKind(workflowFormTask)
     : null;

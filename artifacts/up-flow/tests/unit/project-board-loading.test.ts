@@ -14,7 +14,7 @@ test("waits for the project workflow before rendering its board", () => {
 
   assert.match(
     projectPage,
-    /const \[\[f, m, w\], p, t\] = await Promise\.all\(\[/,
+    /const \[\[f, m, w\], p, t, detail\] = await Promise\.all\(\[/,
   );
   assert.match(
     projectPage,

@@ -188,6 +188,15 @@ jobs:
       - name: Open, edit, and reload the Marketing B2B form
         run: pnpm --filter @workspace/up-flow exec playwright test tests/marketing-b2b-functional.spec.ts
 
+      - name: Upload Marketing B2B failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: marketing-b2b-test-results
+          path: artifacts/up-flow/test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
   e2e:
     name: Up Flow e2e (Playwright)
     runs-on: ubuntu-latest
